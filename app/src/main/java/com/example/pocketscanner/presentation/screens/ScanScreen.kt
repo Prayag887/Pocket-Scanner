@@ -1,0 +1,168 @@
+package com.example.pocketscanner.presentation.screens
+
+import android.app.Activity
+import android.net.Uri
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import coil.compose.rememberAsyncImagePainter
+import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
+import com.example.pocketscanner.ui.components.SaveFileDialog
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
+
+@Composable
+fun ScanScreen(
+    navigateBack: () -> Unit,
+    onDocumentScanned: (success: Boolean, filePath: String?) -> Unit,
+    viewModel: DocumentViewModel = koinViewModel()
+) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val coroutineScope = rememberCoroutineScope()
+
+    var isScanning by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var scannedUri by remember { mutableStateOf<Uri?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val options = remember {
+        GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(20)
+            .setResultFormats(
+                GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
+                GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+            )
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+    }
+
+    val scanner = remember { GmsDocumentScanning.getClient(options) }
+
+    val scannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        isScanning = false
+
+        if (result.resultCode == Activity.RESULT_OK) {
+            try {
+                val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+
+                scanningResult?.let { result ->
+                    result.pdf?.let {
+                        onDocumentScanned(true, it.uri.toString())
+                        navigateBack()
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val pages = result.pages
+                    if (!pages.isNullOrEmpty()) {
+                        scannedUri = pages[0].imageUri
+                        showSaveDialog = true
+                    } else {
+                        onDocumentScanned(false, null)
+                        navigateBack()
+                    }
+                } ?: run {
+                    onDocumentScanned(false, null)
+                    navigateBack()
+                }
+            } catch (e: Exception) {
+                Log.e("ScanScreen", "Error processing result: ${e.message}")
+                onDocumentScanned(false, null)
+                navigateBack()
+            }
+        } else {
+            onDocumentScanned(false, null)
+            navigateBack()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (activity != null && !isScanning) {
+            isScanning = true
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener {
+                    onDocumentScanned(false, null)
+                    navigateBack()
+                }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isScanning) {
+                isScanning = false
+                onDocumentScanned(false, null)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Loading spinner
+        if (isScanning || isSaving) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+
+        // Image preview
+        scannedUri?.let { uri ->
+            Image(
+                painter = rememberAsyncImagePainter(uri),
+                contentDescription = "Scanned Document",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .align(Alignment.Center)
+            )
+        }
+
+        // Save dialog
+        if (showSaveDialog && scannedUri != null && !isSaving) {
+            SaveFileDialog(
+                onDismiss = {
+                    showSaveDialog = false
+                    navigateBack()
+                },
+                onSave = { fileName, format ->
+                    isSaving = true
+                    showSaveDialog = false // Hide dialog immediately when saving starts
+
+                    coroutineScope.launch {
+                        try {
+                            val filePath = viewModel.saveImageToFile(
+                                scannedUri!!,
+                                context.contentResolver,
+                                context.filesDir,
+                                fileName,
+                                format
+                            )
+                            onDocumentScanned(true, filePath)
+                        } catch (e: Exception) {
+                            Log.e("ScanScreen", "Saving failed: ${e.message}")
+                            onDocumentScanned(false, null)
+                        } finally {
+                            isSaving = false
+                            navigateBack()
+                        }
+                    }
+                }
+            )
+        }
+    }
+}

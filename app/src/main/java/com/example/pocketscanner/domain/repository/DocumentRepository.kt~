@@ -1,0 +1,4 @@
+package com.example.pocketscanner.domain.repository
+
+class DocumentRepository {
+}

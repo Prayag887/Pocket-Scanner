@@ -1,0 +1,15 @@
+package com.example.pocketscanner.domain.usecase
+
+
+import com.example.pocketscanner.domain.model.Document
+import com.example.pocketscanner.domain.repository.DocumentRepository
+import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
+
+class GetDocumentsUseCase @Inject constructor(
+    private val documentRepository: DocumentRepository
+) {
+    operator fun invoke(): Flow<List<Document>> {
+        return documentRepository.getAllDocuments()
+    }
+}

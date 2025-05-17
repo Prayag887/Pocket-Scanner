@@ -1,0 +1,88 @@
+package com.example.pocketscanner
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
+import com.example.pocketscanner.presentation.screens.DocumentDetailScreen
+import com.example.pocketscanner.presentation.screens.HomeScreen
+import com.example.pocketscanner.presentation.screens.ScanScreen
+import com.example.pocketscanner.ui.theme.PocketScannerTheme
+import org.koin.androidx.compose.koinViewModel
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val cameraPermission = Manifest.permission.CAMERA
+
+        if (ContextCompat.checkSelfPermission(this, cameraPermission) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(cameraPermission),
+                101
+            )
+        }
+
+        setContent {
+            PocketScannerTheme {
+                PocketScannerApp()
+            }
+        }
+    }
+}
+
+@Composable
+fun PocketScannerApp() {
+    val navController = rememberNavController()
+    val documentViewModel: DocumentViewModel = koinViewModel()
+
+    NavHost(
+        navController = navController,
+        startDestination = "home"
+    ) {
+        composable("home") {
+            HomeScreen(
+                navigateToScan = { navController.navigate("scan") },
+                navigateToDocument = { documentId ->
+                    navController.navigate("document/$documentId")
+                }
+            )
+        }
+
+        composable("scan") {
+            ScanScreen(
+                navigateBack = { navController.popBackStack() },
+                onDocumentScanned = { success, filePath ->
+                    if (success && filePath != null) {
+                        documentViewModel.addDocumentFromFile(filePath)
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = "document/{documentId}",
+            arguments = listOf(
+                navArgument("documentId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
+            DocumentDetailScreen(
+                documentId = documentId,
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
