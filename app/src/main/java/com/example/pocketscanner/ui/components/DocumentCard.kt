@@ -24,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.pocketscanner.domain.model.Document
@@ -120,7 +119,7 @@ fun DocumentCard(document: Document, onClick: () -> Unit) {
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "+${document.pages.size * 5} pts",
+                        text = document.format.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = ScannerGreen
                     )

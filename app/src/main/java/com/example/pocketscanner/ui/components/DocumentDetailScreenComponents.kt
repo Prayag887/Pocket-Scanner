@@ -1,0 +1,544 @@
+package com.example.pocketscanner.ui.components
+
+import android.util.Log
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandIn
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import com.example.pocketscanner.domain.model.Document
+import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
+import com.example.pocketscanner.utils.Utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.androidx.compose.koinViewModel
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun PreviewTab(
+    document: Document,
+    onEdit: (Document, Int) -> Unit = { _, _ -> },
+    onShare: (Document) -> Unit = { },
+    navigateBack: () -> Unit = {},
+    onDeleteSuccess: () -> Unit = {}
+) {
+    val viewModel: DocumentViewModel = koinViewModel()
+
+    val pagerState = rememberPagerState(pageCount = { document.pages.size })
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val lazyRowState = rememberLazyListState()
+
+    LaunchedEffect(pagerState.currentPage) {
+        lazyRowState.animateScrollToItem(pagerState.currentPage, -100)
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Page counter header
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+        ) {
+            Text(
+                text = "Page ${pagerState.currentPage + 1} of ${document.pages.size}",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        // Main pager content
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            pageSpacing = 12.dp,
+        ) { pageIndex ->
+            val page = remember(pageIndex) { document.pages[pageIndex] }
+            val fileExtension = remember(page.imageUri) {
+                page.imageUri.substringAfterLast('.', "")
+                    .lowercase()
+                    ?.let {
+                        // Remove any trailing fragment/query if present (like #page=0)
+                        it.substringBefore('#').substringBefore('?')
+                    } ?: ""
+            }
+
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.95f),
+                exit = fadeOut(animationSpec = tween(200))
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.LightGray),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when (fileExtension) {
+                            "png", "jpg", "jpeg" -> {
+                                val painter = rememberAsyncImagePainter(model = page.imageUri)
+                                Image(
+                                    painter = painter,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+
+                                if (painter.state is AsyncImagePainter.State.Loading) {
+                                    CircularProgressIndicator(Modifier.align(Alignment.Center))
+                                }
+                            }
+
+                            "pdf" -> {
+                                val documentId = document.id // Ensure Document has an ID property
+                                val cachedBitmap = remember(documentId, pageIndex) {
+                                    viewModel.getCachedPdfBitmap(documentId, pageIndex)
+                                }
+                                var bitmap by remember { mutableStateOf(cachedBitmap) }
+
+                                LaunchedEffect(documentId, pageIndex) {
+                                    if (bitmap == null) {
+                                        try {
+                                            // Load PDF in background thread
+                                            val renderedBitmap = withContext(Dispatchers.IO) {
+                                                val file = File(page.imageUri)
+                                                val uri = FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.provider",
+                                                    file
+                                                )
+                                                Utils().renderPdfPage(context, uri, page.order)
+                                            }
+                                            bitmap = renderedBitmap
+                                            viewModel.cachePdfBitmap(documentId, pageIndex, renderedBitmap!!)
+                                        } catch (e: Exception) {
+                                            Log.e("PreviewTab", "Error rendering PDF", e)
+                                        }
+                                    }
+                                }
+
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap!!.asImageBitmap(),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        CircularProgressIndicator()
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Loading PDF...", textAlign = TextAlign.Center)
+                                    }
+                                }
+                            }
+
+                            else -> {
+                                Text(
+                                    text = "Unsupported file: .$fileExtension",
+                                    color = Color.Red,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Thumbnail strip
+        if (document.pages.size > 1) {
+            LazyRow(
+                state = lazyRowState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(70.dp)
+            ) {
+                itemsIndexed(document.pages, key = { i, _ -> i }) { index, page ->
+                    val isSelected = pagerState.currentPage == index
+                    val transition = updateTransition(targetState = isSelected, label = "thumbnail-transition")
+
+                    val bgColor by transition.animateColor(label = "bg") {
+                        if (it) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent
+                    }
+                    val padding by transition.animateDp(label = "padding") {
+                        if (it) 2.dp else 0.dp
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(70.dp)
+                            .width(50.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bgColor)
+                            .padding(padding)
+                            .clickable {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(index)
+                                }
+                            }
+                    ) {
+
+                        val fileExtension = remember(page.imageUri) {
+                            page.imageUri.substringAfterLast('.', "")
+                                .lowercase()
+                                ?.let {
+                                    it.substringBefore('#').substringBefore('?')
+                                } ?: ""
+                        }
+                        when (fileExtension) {
+                            "png", "jpg", "jpeg" -> {
+                                Image(
+                                    painter = rememberAsyncImagePainter(page.imageUri),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(4.dp))
+                                )
+                            }
+
+                            "pdf" -> {
+                                val documentId = document.id
+                                val cachedBitmap = viewModel.getCachedPdfBitmap(documentId, index)
+
+                                if (cachedBitmap != null) {
+                                    Image(
+                                        bitmap = cachedBitmap.asImageBitmap(),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(4.dp))
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("PDF", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "${index + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Color.Black.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                                )
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        // Navigation buttons
+        if (document.pages.size > 1) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                NavigationButton(
+                    enabled = pagerState.currentPage > 0,
+                    icon = Icons.Default.ArrowBack,
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+                        }
+                    }
+                )
+
+                NavigationButton(
+                    enabled = pagerState.currentPage < document.pages.size - 1,
+                    icon = Icons.Default.ArrowForward,
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(document.pages.size - 1))
+                        }
+                    }
+                )
+            }
+        }
+
+        // Action buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ActionButton(Icons.Default.Edit, "Edit") { onEdit(document, pagerState.currentPage) }
+            ActionButton(Icons.Default.Share, "Share") { onShare(document) }
+            ActionButton(
+                icon = Icons.Default.Delete,
+                contentDesc = "Delete",
+                tint = MaterialTheme.colorScheme.error,
+                onClick = {
+                    val currentPageIndex = pagerState.currentPage
+                    val currentPage = document.pages[currentPageIndex]
+                    val fullPath = currentPage.imageUri
+                    val fileName = File(fullPath).name
+                    viewModel.deleteDocument(context, fileName) { success ->
+                        if (success) {
+                            Toast.makeText(context, "Successfully deleted", Toast.LENGTH_SHORT).show()
+                            navigateBack()
+                        } else {
+                            Toast.makeText(context, "Failed to delete file", Toast.LENGTH_SHORT).show()
+                        }
+
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun NavigationButton(
+    enabled: Boolean,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    FilledTonalIconButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, contentDescription = null)
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: ImageVector,
+    contentDesc: String,
+    tint: Color = LocalContentColor.current,
+    onClick: () -> Unit
+) {
+    FilledTonalIconButton(onClick = onClick) {
+        Icon(icon, contentDescription = contentDesc, tint = tint)
+    }
+}
+
+
+
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+fun DetailsTab(document: Document) {
+    val formattedDate = remember(document.createdAt) {
+        SimpleDateFormat("MMMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(document.createdAt))
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { AnimatedDetailItem("Document Name", document.title) }
+        item { AnimatedDetailItem("Created On", formattedDate) }
+        item { AnimatedDetailItem("Total Pages", document.pages.size.toString()) }
+        item {
+            AnimatedDetailItem(
+                "Document ID",
+                if (document.id.length >= 8) document.id.substring(0, 8) else document.id
+            )
+        }
+        item { AnimatedDetailItem("Points Earned", "${document.score} pts") }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Document Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (document.tags.isEmpty()) {
+                Text(
+                    "No tags added yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    document.tags.forEachIndexed { i, tag ->
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeIn(animationSpec = tween(300)) + expandHorizontally(animationSpec = tween(300)),
+                            modifier = Modifier.animateItem()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    tag,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimatedDetailItem(title: String, value: String) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(100)
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(250)) + expandVertically(animationSpec = tween(250))
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(value, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+    }
+}
+
+@Composable
+fun TextTab(document: Document) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(200)
+        visible = true
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(400)) + expandIn(expandFrom = Alignment.Center),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.Center)) {
+                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "This would display the extracted text from the document.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}

@@ -10,11 +10,12 @@ import org.koin.core.context.startKoin
 class PocketScannerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        val isDebugBuild = false
 
         startKoin {
             androidLogger()
             androidContext(this@PocketScannerApplication)
-            modules(appModule)
+            modules(appModule(isDebugBuild))
         }
     }
 }

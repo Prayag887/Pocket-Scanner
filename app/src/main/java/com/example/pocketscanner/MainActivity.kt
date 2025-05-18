@@ -6,7 +6,17 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
@@ -18,6 +28,7 @@ import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.presentation.screens.DocumentDetailScreen
 import com.example.pocketscanner.presentation.screens.HomeScreen
 import com.example.pocketscanner.presentation.screens.ScanScreen
+import com.example.pocketscanner.presentation.viewmodels.DocumentDetailViewModel
 import com.example.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
 
@@ -55,9 +66,7 @@ fun PocketScannerApp() {
         composable("home") {
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
-                navigateToDocument = { documentId ->
-                    navController.navigate("document/$documentId")
-                }
+                navigateToDocument = { documentId -> navController.navigate("document/$documentId") }
             )
         }
 
@@ -74,14 +83,31 @@ fun PocketScannerApp() {
 
         composable(
             route = "document/{documentId}",
-            arguments = listOf(
-                navArgument("documentId") { type = NavType.StringType }
-            )
+            arguments = listOf(navArgument("documentId") { type = NavType.StringType })
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
+
+            // ViewModel scoped to this composable
+            val documentDetailViewModel: DocumentDetailViewModel = koinViewModel()
+
+            val documentState = documentDetailViewModel.document.collectAsState()
+            var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+
+            val currentFormat = documentViewModel.currentFormat.collectAsState()
+
+            LaunchedEffect(documentId, currentFormat.value) {
+                documentDetailViewModel.loadDocumentById(
+                    documentId,
+                    desiredFormat = currentFormat.value
+                )
+            }
+
+            val document = documentState.value
             DocumentDetailScreen(
-                documentId = documentId,
-                navigateBack = { navController.popBackStack() }
+                navigateBack = { navController.popBackStack() },
+                document = document,
+                selectedTabIndex = selectedTabIndex,
+                onTabSelected = { selectedTabIndex = it }
             )
         }
     }

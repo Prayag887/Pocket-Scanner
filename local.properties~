@@ -1,0 +1,5 @@
+sdk.dir=C\:\\Users\\user\\AppData\\Local\\Android\\Sdk
+keystore.path=C\:\\Users\\user\\Documents\\keystore_android\\my-release-key.jks
+keystore.password=kinachaiyo
+key.alias=my-key-alias
+key.password=your_key_password

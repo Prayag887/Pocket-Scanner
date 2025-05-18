@@ -1,0 +1,251 @@
+package com.example.pocketscanner.domain.repository
+
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfDocument
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import com.example.pocketscanner.domain.model.Document
+import com.example.pocketscanner.domain.model.Page
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
+import java.util.UUID
+
+class FileSystemDocumentRepository(
+    private val filesDir: File
+) : DocumentRepository {
+
+    override fun getAllDocuments(): Flow<List<Document>> = flow {
+        val files = filesDir.listFiles()?.filter { it.isFile } ?: emptyList()
+        val processedDocuments = mutableListOf<Document>()
+
+        for (file in files) {
+            try {
+                val processedFile = when {
+                    isValidPdf(file) -> file
+                    file.extension.lowercase() in listOf("jpg", "jpeg", "png") -> convertImageToPdf(file) ?: continue
+                    else -> continue
+                }
+
+                // Double-check that the processed file is a valid PDF before proceeding
+                if (isValidPdf(processedFile)) {
+                    val pages = getPdfPages(processedFile)
+                    processedDocuments += Document(
+                        id = processedFile.nameWithoutExtension,
+                        title = processedFile.nameWithoutExtension,
+                        createdAt = processedFile.lastModified(),
+                        pages = pages,
+                        tags = listOf(),
+                        score = 0,
+                        format = "pdf"
+                    )
+                } else {
+                    Log.w("Repository", "Skipping invalid PDF: ${processedFile.name}")
+                }
+            } catch (e: Exception) {
+                Log.e("Repository", "Error processing file ${file.name}: ${e.message}", e)
+                // Continue to next file instead of failing the entire operation
+            }
+        }
+
+        emit(processedDocuments)
+    }
+
+    override suspend fun getDocumentById(id: String): Document? {
+        val file = filesDir.listFiles()?.find { it.nameWithoutExtension == id } ?: return null
+
+        try {
+            val pages = when {
+                isValidPdf(file) -> getPdfPages(file)
+                file.extension.lowercase() in listOf("jpg", "jpeg", "png") -> listOf(
+                    Page(
+                        id = UUID.randomUUID().toString(),
+                        imageUri = file.absolutePath,
+                        order = 0
+                    )
+                )
+                else -> emptyList()
+            }
+
+            return Document(
+                id = id,
+                title = file.nameWithoutExtension,
+                createdAt = file.lastModified(),
+                pages = pages,
+                tags = listOf("scanned", "important"),
+                score = 0,
+                format = file.extension.lowercase()
+            )
+        } catch (e: Exception) {
+            Log.e("Repository", "Error retrieving document $id: ${e.message}", e)
+            return null
+        }
+    }
+
+    private fun getPdfPages(file: File): List<Page> {
+        val pageCount = getPdfPageCount(file)
+        return List(pageCount) { index ->
+            Page(
+                id = "${file.nameWithoutExtension}_page_$index",
+                imageUri = file.absolutePath,
+                order = index
+            )
+        }
+    }
+
+    private fun getPdfPageCount(file: File): Int {
+        var fileDescriptor: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+
+        return try {
+            fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(fileDescriptor)
+            val count = renderer.pageCount
+            Log.d("Repository", "PDF ${file.name} has $count pages")
+            count
+        } catch (e: Exception) {
+            Log.e("Repository", "Error counting PDF pages for ${file.name}: ${e.message}", e)
+            0  // Return 0 instead of 1 to indicate failure
+        } finally {
+            try {
+                renderer?.close()
+            } catch (e: Exception) {
+                Log.e("Repository", "Error closing PDF renderer: ${e.message}", e)
+            }
+
+            try {
+                fileDescriptor?.close()
+            } catch (e: Exception) {
+                Log.e("Repository", "Error closing file descriptor: ${e.message}", e)
+            }
+        }
+    }
+
+    override suspend fun saveDocument(document: Document) {
+        // Implementation if needed
+    }
+
+    override suspend fun deleteDocument(id: String) {
+        try {
+            val file = filesDir.listFiles()?.find { it.nameWithoutExtension == id }
+            if (file != null) {
+                val deleted = file.delete()
+                Log.d("Repository", "Deleted document $id: $deleted")
+            } else {
+                Log.w("Repository", "Document $id not found for deletion")
+            }
+        } catch (e: Exception) {
+            Log.e("Repository", "Error deleting document $id: ${e.message}", e)
+        }
+    }
+
+    override suspend fun getPagesForDocument(documentId: String): List<Page> {
+        val file = filesDir.listFiles()?.find { it.nameWithoutExtension == documentId } ?: return emptyList()
+
+        return try {
+            when {
+                isValidPdf(file) -> getPdfPages(file)
+                file.extension.lowercase() in listOf("jpg", "jpeg", "png") -> listOf(
+                    Page(
+                        id = UUID.randomUUID().toString(),
+                        imageUri = file.absolutePath,
+                        order = 0
+                    )
+                )
+                else -> emptyList()
+            }
+        } catch (e: Exception) {
+            Log.e("Repository", "Error getting pages for document $documentId: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    private fun convertImageToPdf(imageFile: File): File? {
+        var document: PdfDocument? = null
+
+        return try {
+            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+            if (bitmap == null) {
+                Log.e("Repository", "Failed to decode bitmap from ${imageFile.name}")
+                return null
+            }
+
+            document = PdfDocument()
+            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, 1).create()
+            val page = document.startPage(pageInfo)
+            val canvas = page.canvas
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
+            document.finishPage(page)
+
+            val pdfFile = File(filesDir, "${imageFile.nameWithoutExtension}.pdf")
+            pdfFile.outputStream().use { output ->
+                document.writeTo(output)
+            }
+
+            bitmap.recycle()
+
+            // Verify the PDF was created successfully
+            if (pdfFile.exists() && pdfFile.length() > 0 && isValidPdf(pdfFile)) {
+                // Delete original image only if conversion succeeded
+                val deleted = imageFile.delete()
+                Log.d("Repository", "Deleted original image ${imageFile.name}: $deleted")
+                pdfFile
+            } else {
+                Log.e("Repository", "Generated PDF failed validation checks: ${pdfFile.name}")
+                pdfFile.delete() // Clean up invalid PDF
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("Repository", "Failed to convert image to PDF: ${e.message}", e)
+            null
+        } finally {
+            document?.close()
+        }
+    }
+
+    /**
+     * Improved PDF validation that uses PdfRenderer to truly verify if a file
+     * is a valid PDF instead of just checking the header.
+     */
+    private fun isValidPdf(file: File): Boolean {
+        if (!file.exists() || !file.isFile || file.length() < 8) return false
+
+        // Quick header check first to avoid expensive operations for obviously non-PDF files
+        try {
+            FileInputStream(file).use { fis ->
+                val headerBytes = ByteArray(5)
+                if (fis.read(headerBytes) != 5) return false
+                val headerString = String(headerBytes)
+                if (headerString != "%PDF-") return false
+            }
+        } catch (e: Exception) {
+            Log.e("Repository", "Error reading file header for ${file.name}: ${e.message}", e)
+            return false
+        }
+
+        // Thorough validation by attempting to open with PdfRenderer
+        var fileDescriptor: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+
+        return try {
+            fileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(fileDescriptor)
+            // If we get here, the PDF is valid
+            true
+        } catch (e: Exception) {
+            Log.e("Repository", "PDF validation failed for ${file.name}: ${e.message}", e)
+            false
+        } finally {
+            try {
+                renderer?.close()
+            } catch (e: Exception) {}
+
+            try {
+                fileDescriptor?.close()
+            } catch (e: Exception) {}
+        }
+    }
+}

@@ -24,12 +24,12 @@ private val DarkColorScheme = darkColorScheme(
     error = ScannerRed
 )
 
-private val LightColorScheme = lightColorScheme(
+private val LightColorScheme = darkColorScheme(
     primary = ScannerBlue,
     secondary = ScannerPurple,
     tertiary = ScannerGreen,
-    background = BackgroundLight,
-    surface = SurfaceLight,
+    background = BackgroundDark,
+    surface = SurfaceDark,
     error = ScannerRed
 )
 

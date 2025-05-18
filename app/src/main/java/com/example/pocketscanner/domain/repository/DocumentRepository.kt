@@ -1,11 +1,13 @@
 package com.example.pocketscanner.domain.repository
 
 import com.example.pocketscanner.domain.model.Document
+import com.example.pocketscanner.domain.model.Page
 import kotlinx.coroutines.flow.Flow
 
 interface DocumentRepository {
-    fun getAllDocuments(): Flow<List<Document>>
-    suspend fun getDocumentById(id: String): Document?
     suspend fun saveDocument(document: Document)
     suspend fun deleteDocument(id: String)
+    suspend fun getAllDocuments(desiredFormat: String): Flow<List<Document>>
+    suspend fun getDocumentById(id: String, desiredFormat: String): Document?
+    suspend fun getPagesForDocument(documentId: String, desiredFormat: String): List<Page>
 }
