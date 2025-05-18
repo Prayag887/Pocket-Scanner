@@ -6,15 +6,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.app.ActivityCompat
@@ -24,11 +20,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.presentation.screens.DocumentDetailScreen
 import com.example.pocketscanner.presentation.screens.HomeScreen
 import com.example.pocketscanner.presentation.screens.ScanScreen
 import com.example.pocketscanner.presentation.viewmodels.DocumentDetailViewModel
+import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
 
@@ -72,7 +68,7 @@ fun PocketScannerApp() {
 
         composable("scan") {
             ScanScreen(
-                navigateBack = { navController.popBackStack() },
+                navigateHome = { navController.popBackStack(route = "home", inclusive = false) },
                 onDocumentScanned = { success, filePath ->
                     if (success && filePath != null) {
                         documentViewModel.addDocumentFromFile(filePath)
@@ -89,8 +85,9 @@ fun PocketScannerApp() {
 
             // ViewModel scoped to this composable
             val documentDetailViewModel: DocumentDetailViewModel = koinViewModel()
+            val documentViewModel: DocumentViewModel = koinViewModel()
 
-            val documentState = documentDetailViewModel.document.collectAsState()
+            val documentIdState = documentViewModel.uiState.collectAsState()
             var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
 
             val currentFormat = documentViewModel.currentFormat.collectAsState()
@@ -102,7 +99,7 @@ fun PocketScannerApp() {
                 )
             }
 
-            val document = documentState.value
+            val document = documentIdState.value.documents.find { it.id == documentId }
             DocumentDetailScreen(
                 navigateBack = { navController.popBackStack() },
                 document = document,

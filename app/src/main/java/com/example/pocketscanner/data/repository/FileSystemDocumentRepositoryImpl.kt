@@ -18,8 +18,6 @@ class FileSystemDocumentRepositoryImpl(
     companion object {
         private const val TAG = "FileSystemDocRepo"
         private val IMAGE_EXTENSIONS = listOf("jpg", "jpeg", "png")
-
-        // Track deleted document IDs to prevent recreation
         private val deletedDocumentIds = mutableSetOf<String>()
     }
 
@@ -81,7 +79,6 @@ class FileSystemDocumentRepositoryImpl(
 
         return getDocumentPages(documentId, desiredFormat)
     }
-    //endregion
 
     private fun loadDocumentsFromFileSystem(desiredFormat: String): List<Document> {
         val files = filesDir.listFiles()?.filter { it.isFile } ?: emptyList()
@@ -117,7 +114,7 @@ class FileSystemDocumentRepositoryImpl(
         val processedFile = when {
             isPdf(file) && isValidPdf(file) -> file
             isImage(file) -> file
-            else -> null
+            else -> file
         }
 
 
@@ -132,13 +129,13 @@ class FileSystemDocumentRepositoryImpl(
         if (pages.isEmpty()) return null
 
         return Document(
-            id = processedFile?.nameWithoutExtension ?: "",
-            title = processedFile?.nameWithoutExtension ?: "",
-            createdAt = processedFile?.lastModified() ?: 0,
+            id = processedFile.nameWithoutExtension,
+            title = processedFile.nameWithoutExtension,
+            createdAt = processedFile.lastModified(),
             pages = pages,
             tags = listOf(),
             score = 0,
-            format = if (isPdf(processedFile)) "pdf" else processedFile?.extension?.lowercase() ?: "jpg"
+            format = if (isPdf(processedFile)) "pdf" else processedFile.extension.lowercase()
         )
     }
 

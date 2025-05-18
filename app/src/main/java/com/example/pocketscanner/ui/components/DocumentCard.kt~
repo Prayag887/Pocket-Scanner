@@ -119,7 +119,7 @@ fun DocumentCard(document: Document, onClick: () -> Unit) {
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "+${document.format}",
+                        text = document.format.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = ScannerGreen
                     )
@@ -127,4 +127,18 @@ fun DocumentCard(document: Document, onClick: () -> Unit) {
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DocumentCardPreview() {
+    val mockDocument = Document(
+        title = "Sample Document",
+        pages = listOf("page1.jpg", "page2.jpg"),
+        createdAt = System.currentTimeMillis(),
+        score = 87,
+        format = "pdf"
+    )
+
+    DocumentCard(document = mockDocument, onClick = {})
 }

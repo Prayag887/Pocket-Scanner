@@ -66,7 +66,6 @@ fun HomeScreen(
     refreshTrigger: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val currentFormat by viewModel.currentFormat.collectAsState()
 
     // This effect will run when the screen first loads AND when refreshTrigger changes
     LaunchedEffect(Unit, refreshTrigger) {
@@ -314,9 +313,15 @@ private fun DocumentsList(
         contentPadding = PaddingValues(bottom = 100.dp)
     ) {
         items(documents) { document ->
+            if (document.id.isNullOrEmpty()) {
+                println("Warning: Document with empty ID found: $document")
+            }
             DocumentCard(
                 document = document,
-                onClick = { navigateToDocument(document.id) }
+                onClick = {
+                    println("Navigating to document with id=${document.id}")
+                    navigateToDocument(document.id)
+                }
             )
         }
     }

@@ -2,45 +2,38 @@ package com.example.pocketscanner.presentation.screens
 
 import android.app.Activity
 import android.net.Uri
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import coil.compose.rememberAsyncImagePainter
 import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
-import com.example.pocketscanner.ui.components.SaveFileDialog
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
-import androidx.core.net.toUri
 
 @Composable
 fun ScanScreen(
-    navigateBack: () -> Unit,
+    navigateHome: () -> Unit,
     onDocumentScanned: (success: Boolean, filePath: String?) -> Unit,
     viewModel: DocumentViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
-    var scannedDocumentPages by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    var isScanning by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var scannedUri by remember { mutableStateOf<Uri?>(null) }
-    var isSaving by remember { mutableStateOf(false) }
-    var isPdf by remember { mutableStateOf(false) }
+    var scannedDocumentPages by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pdfUri by remember { mutableStateOf<Uri?>(null) }
+    var isPdf by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
 
     val options = remember {
         GmsDocumentScannerOptions.Builder()
@@ -59,119 +52,88 @@ fun ScanScreen(
     val scannerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        isScanning = false
-
         if (result.resultCode == Activity.RESULT_OK) {
             try {
-                val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+                val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
 
-                scanningResult?.let { result ->
-                    val pages = result.pages
+                scanResult?.let {
+                    when {
+                        !it.pages.isNullOrEmpty() -> {
+                            scannedDocumentPages = it.pages?.map { page -> page.imageUri } ?: emptyList()
+                            isPdf = false
+                            showSaveDialog = true
+                        }
 
-                    if (!pages.isNullOrEmpty()) {
-                        scannedDocumentPages = pages.map { it.imageUri.toString() }
-                        scannedUri = pages.first().imageUri
-                        isPdf = false
-                        showSaveDialog = true
-                    } else if (result.pdf != null) {
-                        pdfUri = result.pdf!!.uri
-                        isPdf = true
-                        showSaveDialog = true
-                    } else {
-                        onDocumentScanned(false, null)
-                        navigateBack()
+                        it.pdf != null -> {
+                            pdfUri = it.pdf!!.uri
+                            isPdf = true
+                            showSaveDialog = true
+                        }
+
+                        else -> {
+                            onDocumentScanned(false, null)
+                            navigateHome()
+                        }
                     }
                 } ?: run {
                     onDocumentScanned(false, null)
-                    navigateBack()
+                    navigateHome()
                 }
             } catch (e: Exception) {
-                Log.e("ScanScreen", "Error processing result: ${e.message}")
                 onDocumentScanned(false, null)
-                navigateBack()
+                navigateHome()
             }
         } else {
             onDocumentScanned(false, null)
-            navigateBack()
+            navigateHome()
         }
     }
 
+    // Trigger scanner only once
     LaunchedEffect(Unit) {
-        if (activity != null && !isScanning) {
-            isScanning = true
-            scanner.getStartScanIntent(activity)
+        activity?.let {
+            scanner.getStartScanIntent(it)
                 .addOnSuccessListener { intentSender ->
                     scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
                 }
                 .addOnFailureListener {
                     onDocumentScanned(false, null)
-                    navigateBack()
+                    navigateHome()
                 }
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            if (isScanning) {
-                isScanning = false
-                onDocumentScanned(false, null)
-            }
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (isScanning || isSaving) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        }
-
-        if (!isPdf) {
-            scannedUri?.let { uri ->
-                Image(
-                    painter = rememberAsyncImagePainter(uri),
-                    contentDescription = "Scanned Document",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .align(Alignment.Center)
-                )
-            }
-        }
-
-        if (showSaveDialog && (scannedUri != null || pdfUri != null) && !isSaving) {
-            SaveFileDialog(
-                onDismiss = {
-                    showSaveDialog = false
-                    navigateBack()
-                },
-                onSave = { fileName, format ->
-                    isSaving = true
-                    showSaveDialog = false
-
-                    coroutineScope.launch {
-                        try {
-                            if (isPdf && pdfUri != null) {
-                                onDocumentScanned(true, pdfUri.toString())
-                            } else if (scannedDocumentPages.isNotEmpty()) {
-                                val uris = scannedDocumentPages.map { it.toUri() }
-                                viewModel.mergeAndSaveImages(
-                                    uris,
-                                    context.contentResolver,
-                                    context.filesDir,
-                                    fileName,
-                                    format
-                                )
-//                                onDocumentScanned(true, savedFilePath)
-                            }
-                        } catch (e: Exception) {
-                            Log.e("ScanScreen", "Saving failed: ${e.message}")
-                            onDocumentScanned(false, null)
-                        } finally {
-                            isSaving = false
-                            navigateBack()
+    // Show SaveDocumentScreen with first scanned page URI passed
+    if (showSaveDialog) {
+        SaveDocumentScreen(
+            previewImageUri = scannedDocumentPages.firstOrNull(),
+            onDismiss = navigateHome,
+            onNavigateBack = navigateHome,
+            onSave = { fileName, format ->
+                coroutineScope.launch {
+                    try {
+                        if (isPdf && pdfUri != null) {
+                            // Save directly from PDF
+                            onDocumentScanned(true, pdfUri.toString())
+                        } else {
+                            // Merge and save images
+                            viewModel.mergeAndSaveImages(
+                                scannedDocumentPages,
+                                context.contentResolver,
+                                context.filesDir,
+                                fileName,
+                                format
+                            )
+                            // Emit actual saved file path if available
+                            onDocumentScanned(true, "saved_file_path_placeholder")
                         }
+                    } catch (e: Exception) {
+                        onDocumentScanned(false, null)
+                    } finally {
+                        navigateHome()
                     }
                 }
-            )
-        }
+            }
+        )
     }
 }

@@ -313,9 +313,15 @@ private fun DocumentsList(
         contentPadding = PaddingValues(bottom = 100.dp)
     ) {
         items(documents) { document ->
+            if (document.id.isEmpty()) {
+                println("Warning: Document with empty ID found: $document")
+            }
             DocumentCard(
                 document = document,
-                onClick = { navigateToDocument(document.id) }
+                onClick = {
+                    println("Navigating to document with id=${document.id}")
+                    navigateToDocument(document.id)
+                }
             )
         }
     }

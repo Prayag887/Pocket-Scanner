@@ -20,3 +20,10 @@ val BackgroundDark = Color(0xFF121212)
 val BackgroundLight = Color(0xFFF2F2F7)
 val SurfaceDark = Color(0xFF1C1C1E)
 val SurfaceLight = Color(0xFFFFFFFF)
+
+// Define a vibrant color palette
+val VibrantPurple = Color(0xFF6200EE)
+val VibrantRed = Color(0xFFCF6679)
+val VibrantBlue = Color(0xFF2196F3)
+val VibrantGreen = Color(0xFF4CAF50)
+val VibrantOrange = Color(0xFFFF9800)

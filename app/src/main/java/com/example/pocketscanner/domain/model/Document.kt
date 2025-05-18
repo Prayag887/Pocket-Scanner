@@ -2,7 +2,7 @@ package com.example.pocketscanner.domain.model
 
 data class Document(
     val id: String = "",
-    val title: String = "Untitled Document",
+    val title: String = "",
     val createdAt: Long = 0L,
     val pages: List<Page> = emptyList(),
     val format: String = "pdf",

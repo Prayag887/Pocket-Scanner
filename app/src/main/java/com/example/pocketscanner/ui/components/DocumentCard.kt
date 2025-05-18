@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.pocketscanner.domain.model.Document
 import com.example.pocketscanner.ui.theme.ScannerGreen
@@ -127,4 +128,18 @@ fun DocumentCard(document: Document, onClick: () -> Unit) {
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DocumentCardPreview() {
+    val mockDocument = Document(
+        title = "Sample Document",
+        pages = listOf(),
+        createdAt = System.currentTimeMillis(),
+        score = 87,
+        format = "pdf"
+    )
+
+    DocumentCard(document = mockDocument, onClick = {})
 }

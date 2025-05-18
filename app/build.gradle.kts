@@ -39,6 +39,7 @@ android {
             buildTypes {
                 getByName("release") {
                     isMinifyEnabled = true
+                    isShrinkResources = true
                     proguardFiles(
                         getDefaultProguardFile("proguard-android-optimize.txt"),
                         "proguard-rules.pro"
@@ -47,7 +48,7 @@ android {
                 }
 
                 getByName("debug") {
-                    signingConfig = signingConfigs.getByName("debug") // This uses default debug keystore
+                    signingConfig = signingConfigs.getByName("debug")
                     buildConfigField("boolean", "DEBUG", "true")
                 }
             }
@@ -84,42 +85,21 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
-    // CameraX Core Library
-    implementation ("androidx.camera:camera-core:1.4.2")
-
-    // CameraX Camera2 Implementation
-    implementation ("androidx.camera:camera-camera2:1.4.2")
-
-    // CameraX Lifecycle
-    implementation ("androidx.camera:camera-lifecycle:1.4.2")
-
-    // CameraX View for Preview
-    implementation ("androidx.camera:camera-view:1.4.2")
-
-    // Optional: For image analysis
-    implementation ("androidx.camera:camera-extensions:1.4.2")
-
-    implementation ("androidx.navigation:navigation-compose:2.9.0")
-
-
+    implementation (libs.androidx.camera.core)
+    implementation (libs.androidx.camera.camera2)
+    implementation (libs.androidx.camera.lifecycle)
+    implementation (libs.androidx.camera.view)
+    implementation (libs.androidx.camera.extensions)
+    implementation (libs.androidx.navigation.compose)
     implementation(libs.document.scanner)
-
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
-
-    implementation ("com.google.android.material:material:1.12.0")
-
-    //koin
-    implementation("io.insert-koin:koin-android:4.0.0")
-    implementation("io.insert-koin:koin-core:3.5.0")
-    implementation("io.insert-koin:koin-androidx-compose:4.0.0")
-
-    testImplementation("io.insert-koin:koin-test-junit5:3.5.0")
-
-    // material icons
-    implementation("androidx.compose.material:material-icons-core:1.7.8")
-    implementation("androidx.compose.material:material-icons-extended:1.7.8")
-
-    implementation("io.coil-kt:coil-compose:2.4.0")
+    implementation (libs.material)
+    implementation(libs.koin.android)
+    implementation(libs.koin.core)
+    implementation(libs.koin.androidx.compose)
+    testImplementation(libs.koin.test.junit5)
+    implementation(libs.androidx.material.icons.core)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.coil.compose)
 
 }

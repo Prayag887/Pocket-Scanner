@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import androidx.core.net.toUri
 
 class DocumentViewModel(
     private val getDocumentsUseCase: GetDocumentsUseCase
@@ -152,7 +153,6 @@ class DocumentViewModel(
                 for (uri in uris) {
                     val mimeType = contentResolver.getType(uri) ?: ""
                     if (mimeType == "application/pdf" || uri.toString().endsWith(".pdf")) {
-                        // Try to resolve to File if possible
                         val filePath = uri.path
                         if (filePath != null) {
                             val file = File(filePath)
@@ -218,13 +218,80 @@ class DocumentViewModel(
                     }
                 }
 
-                // Return first saved file or some meaningful path
                 savedFiles.firstOrNull() ?: throw IllegalStateException("No images saved")
             }
 
             else -> throw IllegalArgumentException("Unsupported format: $format")
         }
     }
+
+    fun loadDocumentPages(documentId: String, context: Context) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(isLoading = true)
+
+                val document = _uiState.value.documents.find { it.id == documentId }
+                if (document == null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = "Document not found"
+                    )
+                    return@launch
+                }
+
+                when (document.format.lowercase()) {
+                    "pdf" -> {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = null
+                        )
+                    }
+
+                    "png", "jpg", "jpeg" -> {
+                        document.pages.forEach { page ->
+                            val uri = page.imageUri.toUri()
+                            if (getCachedPdfBitmap(document.id, page.order - 1) == null) {
+                                try {
+                                    val inputStream = when (uri.scheme) {
+                                        "file" -> File(uri.path!!).inputStream()
+                                        "content" -> context.contentResolver.openInputStream(uri)
+                                        else -> null
+                                    }
+
+                                    inputStream?.use { stream ->
+                                        val bitmap = BitmapFactory.decodeStream(stream)
+                                        bitmap?.let {
+                                            cachePdfBitmap(document.id, page.order - 1, it)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("DocumentViewModel", "Error loading image: ${e.message}")
+                                }
+                            }
+                        }
+
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = null
+                        )
+                    }
+
+                    else -> {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = "Unsupported format: ${document.format}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Failed to load document: ${e.message}"
+                )
+            }
+        }
+    }
+
 
     private fun extractBitmapsFromUri(uri: Uri, contentResolver: ContentResolver): List<Bitmap> {
         val mimeType = contentResolver.getType(uri) ?: ""
@@ -263,18 +330,21 @@ class DocumentViewModel(
     }
 
     fun addDocumentFromFile(filePath: String, pageUris: List<Uri>? = null) {
+        val file = File(filePath)
+        val fileNameWithoutExtension = file.nameWithoutExtension
+        val extension = file.extension.lowercase(Locale.ROOT)
         val timestamp = System.currentTimeMillis()
-        val documentId = timestamp.toString()
 
+        val documentId = fileNameWithoutExtension
         val pages = pageUris?.mapIndexed { index, uri ->
             Page(
-                id = "page_${timestamp}_$index",
+                id = "page_${documentId}_$index",
                 imageUri = uri.toString(),
                 order = index + 1
             )
         } ?: listOf(
             Page(
-                id = "page_$timestamp",
+                id = "page_$documentId",
                 imageUri = filePath,
                 order = 1
             )
@@ -282,10 +352,10 @@ class DocumentViewModel(
 
         val document = Document(
             id = documentId,
-            title = "Scanned Document $timestamp",
+            title = "Scanned Document $documentId",
             createdAt = timestamp,
             pages = pages,
-            format = filePath.substringAfterLast('.', "").takeIf { it.isNotEmpty() } ?: "unknown"
+            format = extension.ifEmpty { "unknown" }
         )
 
         _uiState.value = _uiState.value.copy(

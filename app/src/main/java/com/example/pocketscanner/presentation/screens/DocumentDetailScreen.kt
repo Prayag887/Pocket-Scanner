@@ -1,25 +1,53 @@
 package com.example.pocketscanner.presentation.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.pocketscanner.domain.model.Document
 import com.example.pocketscanner.domain.model.Page
+import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.ui.components.DetailsTab
 import com.example.pocketscanner.ui.components.PreviewTab
 import com.example.pocketscanner.ui.components.TextTab
 import com.example.pocketscanner.ui.theme.ScannerOrange
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -29,6 +57,14 @@ fun DocumentDetailScreen(
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
 ) {
+    val viewModel : DocumentViewModel = koinViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val documentId = uiState.documents.find { it.id == document?.id }
+
+    LaunchedEffect(documentId) {
+        viewModel.loadDocumentPages(documentId.toString(), context)
+    }
     Scaffold(
         topBar = {
             DocumentDetailTopBar(
@@ -38,16 +74,18 @@ fun DocumentDetailScreen(
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            if (document == null) {
+            if (uiState.isLoading) {
                 LoadingContent()
             } else {
-                DocumentDetailContent(
-                    document = document,
-                    tabs = listOf("Preview", "Details", "Text"),
-                    selectedTabIndex = selectedTabIndex,
-                    onTabSelected = onTabSelected,
-                    navigateBack = navigateBack,
-                )
+                document?.let {
+                    DocumentDetailContent(
+                        document = it,
+                        tabs = listOf("Preview", "Details", "Text"),
+                        selectedTabIndex = selectedTabIndex,
+                        onTabSelected = onTabSelected,
+                        navigateBack = navigateBack,
+                    )
+                } ?: println("Document not found")
             }
         }
     }
