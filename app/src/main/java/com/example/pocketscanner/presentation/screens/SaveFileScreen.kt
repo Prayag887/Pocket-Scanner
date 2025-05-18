@@ -8,12 +8,14 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -86,6 +88,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -669,13 +672,37 @@ fun DocumentPreviewCard(
     isExpanded: Boolean,
     onExpandToggle: () -> Unit
 ) {
-    val cardHeight by animateFloatAsState(
-        targetValue = if (isExpanded) 280f else 180f,
+    val context = LocalContext.current
+
+    // Animate height directly in Dp for smoother performance
+    val cardHeight by animateDpAsState(
+        targetValue = if (isExpanded) 280.dp else 180.dp,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
         ),
         label = "CardHeight"
+    )
+
+    val rotationAnim = rememberInfiniteTransition(label = "IconRotation")
+    val slowRotation by rotationAnim.animateFloat(
+        initialValue = -5f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "SlowRotation"
+    )
+
+    // Icon scale animation, remember outside conditional
+    val iconScale by animateFloatAsState(
+        targetValue = if (isExpanded) 1.2f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "IconScale"
     )
 
     Card(
@@ -685,9 +712,10 @@ fun DocumentPreviewCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(cardHeight.dp)
+            .height(cardHeight)
             .graphicsLayer {
                 shadowElevation = if (isExpanded) 8f else 4f
+                // Optional: add smooth shadow elevation animation using animateFloatAsState if needed
             }
             .clickable { onExpandToggle() }
     ) {
@@ -708,10 +736,9 @@ fun DocumentPreviewCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(16.dp)
             ) {
-                // Animated preview icon or image
                 if (previewImageUri != null) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
+                        model = ImageRequest.Builder(context)
                             .data(previewImageUri)
                             .crossfade(true)
                             .build(),
@@ -722,17 +749,6 @@ fun DocumentPreviewCard(
                             .clip(RoundedCornerShape(12.dp))
                     )
                 } else {
-                    val rotationAnim = rememberInfiniteTransition(label = "IconRotation")
-                    val slowRotation by rotationAnim.animateFloat(
-                        initialValue = -5f,
-                        targetValue = 5f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(2000, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "SlowRotation"
-                    )
-
                     Icon(
                         Icons.Default.Image,
                         contentDescription = null,
@@ -740,13 +756,7 @@ fun DocumentPreviewCard(
                         modifier = Modifier
                             .size(64.dp)
                             .rotate(slowRotation)
-                            .scale(
-                                animateFloatAsState(
-                                    if (isExpanded) 1.2f else 1f,
-                                    spring(),
-                                    label = "IconScale"
-                                ).value
-                            )
+                            .scale(iconScale)
                     )
                 }
 
@@ -768,12 +778,6 @@ fun DocumentPreviewCard(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(top = 16.dp)
                     ) {
-//                        Text(
-//                            "Tap to collapse preview",
-//                            fontSize = 12.sp,
-//                            color = formatColor.copy(alpha = 0.7f)
-//                        )
-
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(
@@ -832,49 +836,67 @@ fun FormatOption(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val iconForFormat = when(format.value) {
-        "pdf" -> Icons.Default.PictureAsPdf
-        "jpg" -> Icons.Default.Image
-        "png" -> Icons.Default.Image
-        else -> Icons.Default.Description
+    val formatValue = remember(format.value) { format.value.lowercase() }
+
+    val iconForFormat = remember(formatValue) {
+        when (formatValue) {
+            "pdf" -> Icons.Default.PictureAsPdf
+            "jpg" -> Icons.Default.Image
+            "png" -> Icons.Default.Image
+            else -> Icons.Default.Description
+        }
     }
 
-    val formatColor = when(format.value) {
-        "pdf" -> VibrantBlue
-        "jpg" -> ScannerGreen
-        "png" -> VibrantOrange
-        else -> VibrantPurple
+    val formatColor = remember(formatValue) {
+        when (formatValue) {
+            "pdf" -> VibrantBlue
+            "jpg" -> ScannerGreen
+            "png" -> VibrantOrange
+            else -> VibrantPurple
+        }
     }
 
-    val backgroundColor = when {
-        isSelected -> formatColor.copy(alpha = 0.15f)
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val transition = updateTransition(targetState = isSelected, label = "FormatOptionTransition")
+
+    val scale by transition.animateFloat(
+        label = "ScaleAnimation",
+        transitionSpec = { spring(stiffness = Spring.StiffnessMediumLow) }
+    ) { selected -> if (selected) 1.05f else 1f }
+
+    val rotation by transition.animateFloat(
+        label = "RotationAnimation",
+        transitionSpec = { tween(500) }
+    ) { selected -> if (selected) 360f else 0f }
+
+    val backgroundColor = remember(isSelected, formatColor) {
+        if (isSelected)
+            formatColor.copy(alpha = 0.35f)
+        else
+            formatColor.copy(alpha = 0.15f)
     }
 
-    val contentColor = when {
-        isSelected -> formatColor
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    val contentColor = remember(isSelected, formatColor) {
+        if (isSelected)
+            formatColor
+        else
+            formatColor.copy(alpha = 0.15f)
     }
 
-    val elevation by animateFloatAsState(
-        targetValue = if (isSelected) 8f else 2f,
-        spring(stiffness = Spring.StiffnessMediumLow),
-        label = "CardElevation"
-    )
+    val gradientBrush = remember(isSelected, formatColor, backgroundColor) {
+        if (isSelected)
+            Brush.radialGradient(
+                colors = listOf(formatColor.copy(alpha = 0.2f), backgroundColor)
+            )
+        else
+            SolidColor(backgroundColor)
+    }
 
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1f,
-        spring(stiffness = Spring.StiffnessMediumLow),
-        label = "CardScale"
-    )
+    val labelText = remember(formatValue) { formatValue.uppercase() }
 
     Surface(
-        onClick = {
-            // Animate selection
-            onClick()
-        },
+        onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = backgroundColor,
+        color = Color.Transparent, // Use brush directly in background
         shadowElevation = 1.dp,
         modifier = modifier
             .height(100.dp)
@@ -883,17 +905,7 @@ fun FormatOption(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    if (isSelected)
-                        Brush.radialGradient(
-                            colors = listOf(
-                                formatColor.copy(alpha = 0.2f),
-                                backgroundColor
-                            )
-                        )
-                    else
-                        Brush.verticalGradient(colors = listOf(backgroundColor, backgroundColor))
-                )
+                .background(brush = gradientBrush)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -902,33 +914,23 @@ fun FormatOption(
                     .fillMaxSize()
                     .padding(8.dp)
             ) {
-                // Animated icon
-                val rotationValue by animateFloatAsState(
-                    targetValue = if (isSelected) 360f else 0f,
-                    animationSpec = tween(500),
-                    label = "SelectRotation"
-                )
-
                 Icon(
-                    iconForFormat,
+                    imageVector = iconForFormat,
                     contentDescription = null,
                     tint = contentColor,
                     modifier = Modifier
                         .size(32.dp)
-                        .graphicsLayer {
-                            rotationZ = rotationValue
-                        }
+                        .graphicsLayer { rotationZ = rotation }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    format.value.uppercase(),
+                    text = labelText,
                     fontWeight = FontWeight.Bold,
                     color = contentColor
                 )
 
-                // Show a small indicator when selected
                 AnimatedVisibility(
                     visible = isSelected,
                     enter = scaleIn() + fadeIn(),
@@ -938,13 +940,14 @@ fun FormatOption(
                         modifier = Modifier
                             .padding(top = 4.dp)
                             .size(8.dp)
-                            .background(contentColor, RoundedCornerShape(4.dp))
+                            .background(color = contentColor, shape = RoundedCornerShape(4.dp))
                     )
                 }
             }
         }
     }
 }
+
 
 @Composable
 fun FormatInfoCard(format: FormatOption, formatColor: Color) {
@@ -953,17 +956,28 @@ fun FormatInfoCard(format: FormatOption, formatColor: Color) {
         initialValue = 0.2f,
         targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000),
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "BorderPulse"
     )
 
-    val additionalInfo = when (format.value.lowercase()) {
-        "pdf" -> "PDF files preserve formatting across devices and are ideal for documents that might be printed."
-        "jpg", "jpeg" -> "JPEG is best for photos and complex images where file size matters more than perfect quality."
-        "png" -> "PNG maintains image quality and supports transparency, but creates larger files."
-        else -> ""
+    val additionalInfo = remember(format.value) {
+        when (format.value.lowercase()) {
+            "pdf" -> "PDF files preserve formatting across devices and are ideal for documents that might be printed."
+            "jpg", "jpeg" -> "JPEG is best for photos and complex images where file size matters more than perfect quality."
+            "png" -> "PNG maintains image quality and supports transparency, but creates larger files."
+            else -> ""
+        }
+    }
+
+    val gradientBrush = remember(formatColor) {
+        Brush.verticalGradient(
+            colors = listOf(
+                formatColor.copy(alpha = 0.15f),
+                Color.Transparent
+            )
+        )
     }
 
     Card(
@@ -985,14 +999,7 @@ fun FormatInfoCard(format: FormatOption, formatColor: Color) {
     ) {
         Column(
             modifier = Modifier
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            formatColor.copy(alpha = 0.05f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(gradientBrush)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -1020,6 +1027,7 @@ fun FormatInfoCard(format: FormatOption, formatColor: Color) {
         }
     }
 }
+
 
 data class FormatOption(
     val value: String = "",

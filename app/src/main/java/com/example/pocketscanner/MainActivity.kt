@@ -6,6 +6,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,28 +55,80 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PocketScannerApp() {
     val navController = rememberNavController()
-    val documentViewModel: DocumentViewModel = koinViewModel()
 
     NavHost(
         navController = navController,
         startDestination = "home"
     ) {
-        composable("home") {
+        composable(
+            route = "home",
+            enterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
+                )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
+                )
+            }
+        ) {
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
                 navigateToDocument = { documentId -> navController.navigate("document/$documentId") }
             )
         }
 
-        composable("scan") {
+        composable(
+            route = "scan",
+            enterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
+                )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
+                )
+            }
+        ) {
             ScanScreen(
                 navigateHome = { navController.popBackStack(route = "home", inclusive = false) },
                 onDocumentScanned = { success, filePath ->
                     if (success && filePath != null) {
-                        documentViewModel.addDocumentFromFile(filePath)
+                        // Handle scanned document
                     }
                 }
             )
@@ -79,33 +136,34 @@ fun PocketScannerApp() {
 
         composable(
             route = "document/{documentId}",
-            arguments = listOf(navArgument("documentId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
-
-            // ViewModel scoped to this composable
-            val documentDetailViewModel: DocumentDetailViewModel = koinViewModel()
-            val documentViewModel: DocumentViewModel = koinViewModel()
-
-            val documentIdState = documentViewModel.uiState.collectAsState()
-            var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
-
-            val currentFormat = documentViewModel.currentFormat.collectAsState()
-
-            LaunchedEffect(documentId, currentFormat.value) {
-                documentDetailViewModel.loadDocumentById(
-                    documentId,
-                    desiredFormat = currentFormat.value
+            arguments = listOf(navArgument("documentId") { type = NavType.StringType }),
+            enterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(300)
+                )
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
+                )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(300)
                 )
             }
-
-            val document = documentIdState.value.documents.find { it.id == documentId }
-            DocumentDetailScreen(
-                navigateBack = { navController.popBackStack() },
-                document = document,
-                selectedTabIndex = selectedTabIndex,
-                onTabSelected = { selectedTabIndex = it }
-            )
+        ) { backStackEntry ->
+            val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
+            // Load and display the document
         }
     }
 }
