@@ -175,7 +175,6 @@ private fun TabsRow(
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 fun DocumentDetailScreenPreview() {
-    // Sample document data with default values and valid types
     val sampleDocument = Document(
         id = "1",
         title = "Sample Document",

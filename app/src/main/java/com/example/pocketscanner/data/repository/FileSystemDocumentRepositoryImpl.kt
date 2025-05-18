@@ -1,7 +1,5 @@
 package com.example.pocketscanner.data.repository
 
-import android.graphics.BitmapFactory
-import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -11,7 +9,6 @@ import com.example.pocketscanner.domain.repository.DocumentRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.io.File
-import java.io.FileOutputStream
 import java.util.UUID
 
 class FileSystemDocumentRepositoryImpl(
@@ -203,62 +200,6 @@ class FileSystemDocumentRepositoryImpl(
                 order = 0
             )
         )
-    }
-
-    fun convertImageToPdf(imageFile: File): File? {
-        if (isDocumentDeleted(imageFile.nameWithoutExtension)) {
-            Log.d(TAG, "Document ${imageFile.nameWithoutExtension} was deleted, not converting to PDF")
-            return null
-        }
-
-        val pdfFile = File(filesDir, "${imageFile.nameWithoutExtension}.pdf")
-        if (pdfFile.exists()) {
-            if (isValidPdf(pdfFile)) {
-                Log.d(TAG, "PDF version already exists for ${imageFile.name}")
-                return pdfFile
-            } else {
-                pdfFile.delete()
-            }
-        }
-
-        var document: PdfDocument? = null
-
-        return try {
-            Log.d(TAG, "Converting ${imageFile.name} to PDF")
-            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
-            if (bitmap == null) {
-                Log.e(TAG, "Failed to decode bitmap from ${imageFile.name}")
-                return null
-            }
-
-            document = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, 1).create()
-            val page = document.startPage(pageInfo)
-            val canvas = page.canvas
-            canvas.drawBitmap(bitmap, 0f, 0f, null)
-            document.finishPage(page)
-
-            FileOutputStream(pdfFile).use { output ->
-                document.writeTo(output)
-            }
-
-            bitmap.recycle()
-
-            if (pdfFile.exists() && pdfFile.length() > 0 && isValidPdf(pdfFile)) {
-                Log.d(TAG, "Successfully created PDF: ${pdfFile.name}")
-                pdfFile
-            } else {
-                Log.e(TAG, "Generated PDF failed validation: ${pdfFile.name}")
-                pdfFile.delete()
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error converting image to PDF: ${e.message}", e)
-            document?.close()
-            null
-        } finally {
-            document?.close()
-        }
     }
 
     private fun isPdf(file: File?): Boolean {

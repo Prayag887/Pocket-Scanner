@@ -1,5 +1,6 @@
 package com.example.pocketscanner.ui.components
 
+import android.content.Context
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -29,12 +30,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,6 +79,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.pocketscanner.domain.model.Document
+import com.example.pocketscanner.domain.model.Page
 import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.utils.Utils
 import kotlinx.coroutines.Dispatchers
@@ -93,318 +97,244 @@ import java.util.Locale
 fun PreviewTab(
     document: Document,
     onEdit: (Document, Int) -> Unit = { _, _ -> },
-    onShare: (Document) -> Unit = { },
+    onShare: (Document) -> Unit = {},
     navigateBack: () -> Unit = {},
     onDeleteSuccess: () -> Unit = {}
 ) {
     val viewModel: DocumentViewModel = koinViewModel()
-
-    val pagerState = rememberPagerState(pageCount = { document.pages.size })
+    val pagerState = rememberPagerState { document.pages.size }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
-    val lazyRowState = rememberLazyListState()
 
     LaunchedEffect(pagerState.currentPage) {
-        lazyRowState.animateScrollToItem(pagerState.currentPage, -100)
+        // scroll thumbnail strip (if needed)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Page counter header
-        Box(
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            text = "Page ${pagerState.currentPage + 1} of ${document.pages.size}",
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
-        ) {
-            Text(
-                text = "Page ${pagerState.currentPage + 1} of ${document.pages.size}",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
+                .padding(8.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium
+        )
 
-        // Main pager content
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            pageSpacing = 12.dp,
+            pageSpacing = 12.dp
         ) { pageIndex ->
-            val page = remember(pageIndex) { document.pages[pageIndex] }
-            val fileExtension = remember(page.imageUri) {
-                val rawPath = page.imageUri.toString()
-                val cleanPath = rawPath.substringBefore("#") // removes fragment like #page=0
-                val path = cleanPath.replaceFirst("/data/user/0/", "/data/data/${context.packageName}/files/")
-
-                Log.d("PreviewTab", "Uri: ${page.imageUri}")
-                path.substringAfterLast('.', "")
-                    .lowercase()
-                    ?.let {
-                        // Remove any trailing fragment/query if present (like #page=0)
-                        it.substringBefore('#').substringBefore('?')
-                    } ?: ""
-            }
-
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.95f),
-                exit = fadeOut(animationSpec = tween(200))
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.LightGray),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        when (fileExtension) {
-                            "png", "jpg", "jpeg" -> {
-                                val painter = rememberAsyncImagePainter(model = page.imageUri)
-                                Image(
-                                    painter = painter,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
-                                )
-
-                                if (painter.state is AsyncImagePainter.State.Loading) {
-                                    CircularProgressIndicator(Modifier.align(Alignment.Center))
-                                }
-                            }
-
-                            "pdf" -> {
-                                val documentId = document.id // Ensure Document has an ID property
-                                val cachedBitmap = remember(documentId, pageIndex) {
-                                    viewModel.getCachedPdfBitmap(documentId, pageIndex)
-                                }
-                                var bitmap by remember { mutableStateOf(cachedBitmap) }
-
-                                LaunchedEffect(documentId, pageIndex) {
-                                    if (bitmap == null) {
-                                        try {
-                                            // Load PDF in background thread
-                                            val renderedBitmap = withContext(Dispatchers.IO) {
-                                                val file = File(page.imageUri)
-                                                val uri = FileProvider.getUriForFile(
-                                                    context,
-                                                    "${context.packageName}.provider",
-                                                    file
-                                                )
-                                                Utils().renderPdfPage(context, uri, page.order)
-                                            }
-                                            bitmap = renderedBitmap
-                                            viewModel.cachePdfBitmap(documentId, pageIndex, renderedBitmap!!)
-                                        } catch (e: Exception) {
-                                            Log.e("PreviewTab", "Error rendering PDF", e)
-                                        }
-                                    }
-                                }
-
-                                if (bitmap != null) {
-                                    Image(
-                                        bitmap = bitmap!!.asImageBitmap(),
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        CircularProgressIndicator()
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Loading PDF...", textAlign = TextAlign.Center)
-                                    }
-                                }
-                            }
-
-                            else -> {
-                                Text(
-                                    text = "Unsupported file: .$fileExtension",
-                                    color = Color.Red,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Thumbnail strip
-        if (document.pages.size > 1) {
-            LazyRow(
-                state = lazyRowState,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(70.dp)
-            ) {
-                itemsIndexed(document.pages, key = { i, _ -> i }) { index, page ->
-                    val isSelected = pagerState.currentPage == index
-                    val transition = updateTransition(targetState = isSelected, label = "thumbnail-transition")
-
-                    val bgColor by transition.animateColor(label = "bg") {
-                        if (it) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent
-                    }
-                    val padding by transition.animateDp(label = "padding") {
-                        if (it) 2.dp else 0.dp
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(70.dp)
-                            .width(50.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(bgColor)
-                            .padding(padding)
-                            .clickable {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(index)
-                                }
-                            }
-                    ) {
-
-                        val fileExtension = remember(page.imageUri) {
-                            val rawPath = page.imageUri.toString()
-                            val cleanPath = rawPath.substringBefore("#") // removes fragment like #page=0
-                            val path = cleanPath.replaceFirst("/data/user/0/", "/data/data/${context.packageName}/files/")
-
-                            path.substringAfterLast('.', "")
-                                .lowercase()
-                                ?.let {
-                                    it.substringBefore('#').substringBefore('?')
-                                } ?: ""
-                        }
-                        when (fileExtension) {
-                            "png", "jpg", "jpeg" -> {
-                                Image(
-                                    painter = rememberAsyncImagePainter(page.imageUri),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(4.dp))
-                                )
-                            }
-
-                            "pdf" -> {
-                                val documentId = document.id
-                                val cachedBitmap = viewModel.getCachedPdfBitmap(documentId, index)
-
-                                if (cachedBitmap != null) {
-                                    Image(
-                                        bitmap = cachedBitmap.asImageBitmap(),
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(4.dp))
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("PDF", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = "${index + 1}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                                )
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-        }
-
-        // Navigation buttons
-        if (document.pages.size > 1) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                NavigationButton(
-                    enabled = pagerState.currentPage > 0,
-                    icon = Icons.Default.ArrowBack,
-                    onClick = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
-                        }
-                    }
-                )
-
-                NavigationButton(
-                    enabled = pagerState.currentPage < document.pages.size - 1,
-                    icon = Icons.Default.ArrowForward,
-                    onClick = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(document.pages.size - 1))
-                        }
-                    }
-                )
-            }
-        }
-
-        // Action buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ActionButton(Icons.Default.Edit, "Edit") { onEdit(document, pagerState.currentPage) }
-            ActionButton(Icons.Default.Share, "Share") { onShare(document) }
-            ActionButton(
-                icon = Icons.Default.Delete,
-                contentDesc = "Delete",
-                tint = MaterialTheme.colorScheme.error,
-                onClick = {
-                    val currentPageIndex = pagerState.currentPage
-                    val currentPage = document.pages[currentPageIndex]
-                    val fullPath = currentPage.imageUri
-                    val fileName = File(fullPath).name
-                    viewModel.deleteDocument(context, fileName) { success ->
-                        if (success) {
-                            Toast.makeText(context, "Successfully deleted", Toast.LENGTH_SHORT).show()
-                            navigateBack()
-                        } else {
-                            Toast.makeText(context, "Failed to delete file", Toast.LENGTH_SHORT).show()
-                        }
-
-                    }
-                }
+            val page = document.pages[pageIndex]
+            PagePreview(
+                page = page,
+                context = context,
+                viewModel = viewModel,
+                pageIndex = pageIndex,
+                documentId = document.id
             )
+        }
+
+        if (document.pages.size > 1) {
+            PageThumbnails(
+                document = document,
+                pagerState = pagerState,
+                viewModel = viewModel
+            )
+        }
+
+        ActionButtons(
+            pagerState = pagerState,
+            document = document,
+            onEdit = onEdit,
+            onShare = onShare,
+            context = context,
+            viewModel = viewModel,
+            navigateBack = navigateBack
+        )
+    }
+}
+
+@Composable
+fun PagePreview(
+    page: Page,
+    context: Context,
+    viewModel: DocumentViewModel,
+    pageIndex: Int,
+    documentId: String
+) {
+    val fileExtension = remember(page.imageUri) {
+        page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(8.dp)
+    ) {
+        when (fileExtension) {
+            "png", "jpg", "jpeg" -> {
+                val painter = rememberAsyncImagePainter(model = page.imageUri)
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (painter.state is AsyncImagePainter.State.Loading)
+                        CircularProgressIndicator()
+                }
+            }
+
+            "pdf" -> {
+                var bitmap by remember { mutableStateOf(viewModel.getCachedPdfBitmap(documentId, pageIndex)) }
+
+                LaunchedEffect(Unit) {
+                    if (bitmap == null) {
+                        val file = File(page.imageUri.substringBefore("#"))
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                        bitmap = withContext(Dispatchers.IO) {
+                            Utils().renderPdfPage(context, uri, page.order)
+                        }
+                        viewModel.cachePdfBitmap(documentId, pageIndex, bitmap!!)
+                    }
+                }
+
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    LoadingView("Loading PDF...")
+                }
+            }
+
+            else -> LoadingView("Unsupported: .$fileExtension")
         }
     }
 }
+
+@Composable
+fun LoadingView(message: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator()
+        Spacer(Modifier.height(8.dp))
+        Text(message)
+    }
+}
+
+@Composable
+fun PageThumbnails(document: Document, pagerState: PagerState, viewModel: DocumentViewModel) {
+    val coroutineScope = rememberCoroutineScope()
+
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(70.dp)
+    ) {
+        itemsIndexed(document.pages) { index, page ->
+            val fileExtension = page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
+            val isSelected = pagerState.currentPage == index
+
+            Box(
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent)
+                    .clickable {
+                        coroutineScope.launch { pagerState.animateScrollToPage(index) }
+                    }
+            ) {
+                when (fileExtension) {
+                    "png", "jpg", "jpeg" -> Image(
+                        painter = rememberAsyncImagePainter(page.imageUri),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    "pdf" -> {
+                        val bitmap = viewModel.getCachedPdfBitmap(document.id, index)
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("PDF", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionButtons(
+    pagerState: PagerState,
+    document: Document,
+    onEdit: (Document, Int) -> Unit,
+    onShare: (Document) -> Unit,
+    context: Context,
+    viewModel: DocumentViewModel,
+    navigateBack: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        ActionButton(Icons.Default.Edit, "Edit") {
+            onEdit(document, pagerState.currentPage)
+        }
+
+        ActionButton(Icons.Default.Share, "Share") {
+            onShare(document)
+        }
+
+        ActionButton(
+            icon = Icons.Default.Delete,
+            contentDesc = "Delete",
+            tint = MaterialTheme.colorScheme.error
+        ) {
+            val fileUri = document.pages[pagerState.currentPage].imageUri
+            val fileName = File(fileUri.substringBefore("#")).name
+
+            viewModel.deleteDocument(context, fileName) { success ->
+                Toast.makeText(
+                    context,
+                    if (success) "Deleted" else "Failed to delete",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                if (success) navigateBack()
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun NavigationButton(

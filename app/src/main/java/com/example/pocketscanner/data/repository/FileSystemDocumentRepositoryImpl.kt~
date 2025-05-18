@@ -128,7 +128,7 @@ class FileSystemDocumentRepositoryImpl(
         else listOf(
             Page(
                 id = UUID.randomUUID().toString(),
-                imageUri = processedFile?.path ?: "",
+                imageUri = processedFile?.absolutePath ?: "",
                 order = 0
             )
         )
@@ -165,7 +165,7 @@ class FileSystemDocumentRepositoryImpl(
                 listOf(
                     Page(
                         id = UUID.randomUUID().toString(),
-                        imageUri = file.path,
+                        imageUri = file.absolutePath,
                         order = 0
                     )
                 )
@@ -199,7 +199,7 @@ class FileSystemDocumentRepositoryImpl(
         return if (isPdf(file)) getPdfPages(file) else listOf(
             Page(
                 id = UUID.randomUUID().toString(),
-                imageUri = file.path,
+                imageUri = file.absolutePath,
                 order = 0
             )
         )
@@ -289,7 +289,7 @@ class FileSystemDocumentRepositoryImpl(
                         pages.add(
                             Page(
                                 id = UUID.randomUUID().toString(),
-                                imageUri = "${pdfFile?.path}#page=$i",
+                                imageUri = "${pdfFile?.absolutePath}#page=$i",
                                 order = i
                             )
                         )

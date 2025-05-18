@@ -60,8 +60,7 @@ class DocumentViewModel(
 
     fun deleteDocument(context: Context, fileName: String, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
-            val cleanedFileName = fileName.substringBefore("#")
-            val file = File(context.filesDir, cleanedFileName)
+            val file = File("data/data/${context.packageName}/files", fileName)
 
             val deleted = if (file.exists()) {
                 file.delete().also {
@@ -70,7 +69,7 @@ class DocumentViewModel(
 
                         val updatedDocuments = _uiState.value.documents.filterNot { document ->
                             document.pages.any { page ->
-                                page.imageUri.contains(cleanedFileName)
+                                page.imageUri.contains(fileName)
                             }
                         }
 
@@ -90,7 +89,6 @@ class DocumentViewModel(
             }
         }
     }
-
 
 
     fun loadDocuments(desiredFormat: String) {
