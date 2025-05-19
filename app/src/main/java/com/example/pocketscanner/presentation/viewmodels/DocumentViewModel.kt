@@ -24,6 +24,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 import androidx.core.net.toUri
+import kotlinx.coroutines.flow.update
+import androidx.collection.LruCache
 
 class DocumentViewModel(
     private val getDocumentsUseCase: GetDocumentsUseCase
@@ -32,31 +34,31 @@ class DocumentViewModel(
     private val _uiState = MutableStateFlow(DocumentsUiState())
     val uiState: StateFlow<DocumentsUiState> = _uiState.asStateFlow()
 
-
     private val _currentFormat = MutableStateFlow("pdf")
     val currentFormat: StateFlow<String> = _currentFormat.asStateFlow()
 
-    private val pdfBitmapCache = mutableMapOf<String, Bitmap>()
-
+    // Using LruCache instead of mutableMap for better memory management
+    private val bitmapCache = LruCache<String, Bitmap>(20)
 
     init {
         loadDocuments(currentFormat.value)
     }
 
     fun setCurrentFormat(format: String) {
-        _currentFormat.value = format
+        if (_currentFormat.value != format) {
+            _currentFormat.value = format
+            loadDocuments(format)
+        }
     }
 
     fun refreshDocuments() {
         loadDocuments(_currentFormat.value)
     }
 
-    fun getCachedPdfBitmap(documentId: String, pageIndex: Int): Bitmap? {
-        return pdfBitmapCache["$documentId:$pageIndex"]
-    }
+    fun getCachedBitmap(key: String): Bitmap? = bitmapCache.get(key)
 
-    fun cachePdfBitmap(documentId: String, pageIndex: Int, bitmap: Bitmap) {
-        pdfBitmapCache["$documentId:$pageIndex"] = bitmap
+    fun cacheBitmap(key: String, bitmap: Bitmap) {
+        bitmapCache.put(key, bitmap)
     }
 
     fun deleteDocument(context: Context, fileName: String, onResult: (Boolean) -> Unit = {}) {
@@ -65,22 +67,19 @@ class DocumentViewModel(
             val file = File(context.filesDir, cleanedFileName)
 
             val deleted = if (file.exists()) {
-                file.delete().also {
-                    if (it) {
-                        Log.d("Delete", "Successfully deleted file: ${file.path}")
-
-                        val updatedDocuments = _uiState.value.documents.filterNot { document ->
-                            document.pages.any { page ->
-                                page.imageUri.contains(cleanedFileName)
-                            }
-                        }
-
-                        _uiState.value = _uiState.value.copy(documents = updatedDocuments)
-                        refreshDocuments()
-                    } else {
-                        Log.e("Delete", "Failed to delete file: ${file.absolutePath}")
+                val result = file.delete()
+                if (result) {
+                    Log.d("Delete", "Successfully deleted file: ${file.path}")
+                    _uiState.update { state ->
+                        state.copy(documents = state.documents.filterNot { document ->
+                            document.pages.any { it.imageUri.contains(cleanedFileName) }
+                        })
                     }
+                    refreshDocuments()
+                } else {
+                    Log.e("Delete", "Failed to delete file: ${file.absolutePath}")
                 }
+                result
             } else {
                 Log.w("Delete", "File does not exist: ${file.absolutePath}")
                 false
@@ -92,15 +91,11 @@ class DocumentViewModel(
         }
     }
 
-
-
     fun loadDocuments(desiredFormat: String) {
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
             getDocumentsUseCase(desiredFormat).collect { documents ->
-                _uiState.value = DocumentsUiState(
-                    documents = documents,
-                    isLoading = false
-                )
+                _uiState.update { it.copy(documents = documents, isLoading = false) }
             }
         }
     }
@@ -114,13 +109,7 @@ class DocumentViewModel(
     ) {
         viewModelScope.launch {
             try {
-                val resultPath = mergeAndSaveImagesToSingleFileSuspend(
-                    uris,
-                    contentResolver,
-                    filesDir,
-                    fileName,
-                    format
-                )
+                val resultPath = processImages(uris, contentResolver, filesDir, fileName, format)
 
                 if (format.lowercase(Locale.ROOT) == "pdf") {
                     addDocumentFromFile(resultPath)
@@ -129,16 +118,15 @@ class DocumentViewModel(
                     addDocumentFromFile(resultPath, savedUris)
                 }
 
-                _uiState.value = _uiState.value.copy(error = null)
+                _uiState.update { it.copy(error = null) }
                 setCurrentFormat(format)
-                refreshDocuments()
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message)
+                _uiState.update { it.copy(error = e.message) }
             }
         }
     }
 
-    private suspend fun mergeAndSaveImagesToSingleFileSuspend(
+    private suspend fun processImages(
         uris: List<Uri>,
         contentResolver: ContentResolver,
         filesDir: File,
@@ -146,111 +134,93 @@ class DocumentViewModel(
         format: String
     ): String = withContext(Dispatchers.IO) {
         when (format.lowercase(Locale.ROOT)) {
-            "pdf" -> {
-                val pdfFiles = mutableListOf<File>()
-                var needsConversion = false
-
-                for (uri in uris) {
-                    val mimeType = contentResolver.getType(uri) ?: ""
-                    if (mimeType == "application/pdf" || uri.toString().endsWith(".pdf")) {
-                        val filePath = uri.path
-                        if (filePath != null) {
-                            val file = File(filePath)
-                            if (file.exists()) {
-                                pdfFiles.add(file)
-                            } else {
-                                needsConversion = true
-                                break
-                            }
-                        } else {
-                            needsConversion = true
-                            break
-                        }
-                    } else {
-                        needsConversion = true
-                        break
-                    }
-                }
-
-                if (!needsConversion && pdfFiles.isNotEmpty()) {
-                    return@withContext pdfFiles.first().absolutePath
-                }
-
-                val document = PdfDocument()
-                var pageIndex = 0
-
-                uris.forEach { uri ->
-                    val bitmaps = extractBitmapsFromUri(uri, contentResolver)
-                    bitmaps.forEach { bitmap ->
-                        pageIndex++
-                        val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, pageIndex).create()
-                        val page = document.startPage(pageInfo)
-                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                        document.finishPage(page)
-                    }
-                }
-
-                val file = File(filesDir, "$fileName.pdf")
-                document.writeTo(FileOutputStream(file))
-                document.close()
-                file.absolutePath
-            }
-
-            "png", "jpg", "jpeg" -> {
-                val savedFiles = mutableListOf<String>()
-                var fileCounter = 0
-
-                uris.forEach { uri ->
-                    val bitmaps = extractBitmapsFromUri(uri, contentResolver)
-                    bitmaps.forEach { bitmap ->
-                        fileCounter++
-                        val ext = if (format.lowercase(Locale.ROOT) == "jpeg") "jpg" else format.lowercase(Locale.ROOT)
-                        val imageFile = File(filesDir, "$fileName-$fileCounter.$ext")
-                        val formatEnum = when (ext) {
-                            "jpg" -> Bitmap.CompressFormat.JPEG
-                            "png" -> Bitmap.CompressFormat.PNG
-                            else -> Bitmap.CompressFormat.PNG
-                        }
-                        FileOutputStream(imageFile).use { out ->
-                            bitmap.compress(formatEnum, 100, out)
-                        }
-                        savedFiles.add(imageFile.absolutePath)
-                    }
-                }
-
-                savedFiles.firstOrNull() ?: throw IllegalStateException("No images saved")
-            }
-
+            "pdf" -> processToPdf(uris, contentResolver, filesDir, fileName)
+            "png", "jpg", "jpeg" -> processToImages(uris, contentResolver, filesDir, fileName, format)
             else -> throw IllegalArgumentException("Unsupported format: $format")
         }
+    }
+
+    private suspend fun processToPdf(
+        uris: List<Uri>,
+        contentResolver: ContentResolver,
+        filesDir: File,
+        fileName: String
+    ): String {
+        // Check if we can directly use the PDF files
+        if (uris.size == 1) {
+            val uri = uris.first()
+            val mimeType = contentResolver.getType(uri) ?: ""
+            if (mimeType == "application/pdf" && uri.scheme == "file") {
+                val file = File(uri.path!!)
+                if (file.exists()) return file.absolutePath
+            }
+        }
+
+        // Create new PDF
+        val document = PdfDocument()
+        var pageIndex = 0
+
+        uris.forEach { uri ->
+            extractBitmapsFromUri(uri, contentResolver).forEach { bitmap ->
+                pageIndex++
+                val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, pageIndex).create()
+                val page = document.startPage(pageInfo)
+                page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                document.finishPage(page)
+            }
+        }
+
+        val file = File(filesDir, "$fileName.pdf")
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        return file.absolutePath
+    }
+
+    private suspend fun processToImages(
+        uris: List<Uri>,
+        contentResolver: ContentResolver,
+        filesDir: File,
+        fileName: String,
+        format: String
+    ): String {
+        val savedFiles = mutableListOf<String>()
+        var fileCounter = 0
+        val ext = if (format.lowercase(Locale.ROOT) == "jpeg") "jpg" else format.lowercase(Locale.ROOT)
+        val formatEnum = when (ext) {
+            "jpg" -> Bitmap.CompressFormat.JPEG
+            else -> Bitmap.CompressFormat.PNG
+        }
+
+        uris.forEach { uri ->
+            extractBitmapsFromUri(uri, contentResolver).forEach { bitmap ->
+                fileCounter++
+                val imageFile = File(filesDir, "$fileName-$fileCounter.$ext")
+                FileOutputStream(imageFile).use { out ->
+                    bitmap.compress(formatEnum, 100, out)
+                }
+                savedFiles.add(imageFile.absolutePath)
+            }
+        }
+
+        return savedFiles.firstOrNull() ?: throw IllegalStateException("No images saved")
     }
 
     fun loadDocumentPages(documentId: String, context: Context) {
         viewModelScope.launch {
             try {
-                _uiState.value = _uiState.value.copy(isLoading = true)
+                _uiState.update { it.copy(isLoading = true) }
 
                 val document = _uiState.value.documents.find { it.id == documentId }
-                if (document == null) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Document not found"
-                    )
-                    return@launch
-                }
+                    ?: throw IllegalStateException("Document not found")
 
                 when (document.format.lowercase()) {
-                    "pdf" -> {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = null
-                        )
-                    }
-
+                    "pdf" -> {} // PDFs are handled differently
                     "png", "jpg", "jpeg" -> {
                         document.pages.forEach { page ->
                             val uri = page.imageUri.toUri()
-                            if (getCachedPdfBitmap(document.id, page.order - 1) == null) {
+                            val cacheKey = "${document.id}:${page.order - 1}"
+
+                            if (getCachedBitmap(cacheKey) == null) {
                                 try {
                                     val inputStream = when (uri.scheme) {
                                         "file" -> File(uri.path!!).inputStream()
@@ -259,9 +229,8 @@ class DocumentViewModel(
                                     }
 
                                     inputStream?.use { stream ->
-                                        val bitmap = BitmapFactory.decodeStream(stream)
-                                        bitmap?.let {
-                                            cachePdfBitmap(document.id, page.order - 1, it)
+                                        BitmapFactory.decodeStream(stream)?.let { bitmap ->
+                                            cacheBitmap(cacheKey, bitmap)
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -269,29 +238,16 @@ class DocumentViewModel(
                                 }
                             }
                         }
-
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = null
-                        )
                     }
-
-                    else -> {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = "Unsupported format: ${document.format}"
-                        )
-                    }
+                    else -> throw IllegalStateException("Unsupported format: ${document.format}")
                 }
+
+                _uiState.update { it.copy(isLoading = false, error = null) }
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = "Failed to load document: ${e.message}"
-                )
+                _uiState.update { it.copy(isLoading = false, error = "Failed to load document: ${e.message}") }
             }
         }
     }
-
 
     private fun extractBitmapsFromUri(uri: Uri, contentResolver: ContentResolver): List<Bitmap> {
         val mimeType = contentResolver.getType(uri) ?: ""
@@ -300,42 +256,38 @@ class DocumentViewModel(
             mimeType == "application/pdf" || uri.toString().endsWith(".pdf") -> {
                 extractBitmapsFromPdf(uri, contentResolver)
             }
-            mimeType.startsWith("image/") -> {
-                val bitmap = BitmapFactory.decodeStream(contentResolver.openInputStream(uri))
-                if (bitmap != null) listOf(bitmap) else emptyList()
+            mimeType.startsWith("image/") || uri.toString().endsWith(".jpg", true) ||
+                    uri.toString().endsWith(".jpeg", true) || uri.toString().endsWith(".png", true) -> {
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)?.let { listOf(it) } ?: emptyList()
+                } ?: emptyList()
             }
-            else -> {
-                val bitmap = BitmapFactory.decodeStream(contentResolver.openInputStream(uri))
-                if (bitmap != null) listOf(bitmap) else emptyList()
-            }
+            else -> emptyList()
         }
     }
 
     private fun extractBitmapsFromPdf(uri: Uri, contentResolver: ContentResolver): List<Bitmap> {
         val bitmaps = mutableListOf<Bitmap>()
         contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-            val renderer = PdfRenderer(pfd)
-            for (pageIndex in 0 until renderer.pageCount) {
-                renderer.openPage(pageIndex).use { page ->
-                    val width = page.width
-                    val height = page.height
-                    val bitmap = createBitmap(width, height)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    bitmaps.add(bitmap)
+            PdfRenderer(pfd).use { renderer ->
+                for (pageIndex in 0 until renderer.pageCount) {
+                    renderer.openPage(pageIndex).use { page ->
+                        val bitmap = createBitmap(page.width, page.height)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmaps.add(bitmap)
+                    }
                 }
             }
-            renderer.close()
         }
         return bitmaps
     }
 
     fun addDocumentFromFile(filePath: String, pageUris: List<Uri>? = null) {
         val file = File(filePath)
-        val fileNameWithoutExtension = file.nameWithoutExtension
+        val documentId = file.nameWithoutExtension
         val extension = file.extension.lowercase(Locale.ROOT)
         val timestamp = System.currentTimeMillis()
 
-        val documentId = fileNameWithoutExtension
         val pages = pageUris?.mapIndexed { index, uri ->
             Page(
                 id = "page_${documentId}_$index",
@@ -358,9 +310,7 @@ class DocumentViewModel(
             format = extension.ifEmpty { "unknown" }
         )
 
-        _uiState.value = _uiState.value.copy(
-            documents = _uiState.value.documents + document
-        )
+        _uiState.update { it.copy(documents = it.documents + document) }
     }
 }
 

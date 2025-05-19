@@ -6,13 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -28,7 +23,6 @@ import androidx.navigation.navArgument
 import com.example.pocketscanner.presentation.screens.DocumentDetailScreen
 import com.example.pocketscanner.presentation.screens.HomeScreen
 import com.example.pocketscanner.presentation.screens.ScanScreen
-import com.example.pocketscanner.presentation.viewmodels.DocumentDetailViewModel
 import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
@@ -66,30 +60,6 @@ fun PocketScannerApp() {
     ) {
         composable(
             route = "home",
-            enterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            exitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            popEnterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            },
-            popExitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            }
         ) {
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
@@ -99,30 +69,6 @@ fun PocketScannerApp() {
 
         composable(
             route = "scan",
-            enterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            exitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            popEnterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            },
-            popExitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            }
         ) {
             ScanScreen(
                 navigateHome = { navController.popBackStack(route = "home", inclusive = false) },
@@ -137,33 +83,18 @@ fun PocketScannerApp() {
         composable(
             route = "document/{documentId}",
             arguments = listOf(navArgument("documentId") { type = NavType.StringType }),
-            enterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            exitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    animationSpec = tween(300)
-                )
-            },
-            popEnterTransition = {
-                fadeIn(animationSpec = tween(300)) + slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            },
-            popExitTransition = {
-                fadeOut(animationSpec = tween(300)) + slideOutOfContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    animationSpec = tween(300)
-                )
-            }
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId") ?: ""
-            // Load and display the document
+            val viewModel: DocumentViewModel = koinViewModel()
+            val uiState by viewModel.uiState.collectAsState()
+            val document = uiState.documents.find { it.id == documentId }
+            var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+            DocumentDetailScreen(
+                document = document,
+                navigateBack = {  navController.popBackStack(route = "home", inclusive = false) },
+                selectedTabIndex = selectedTabIndex,
+                onTabSelected = {selectedTabIndex = it}
+            )
         }
     }
 }

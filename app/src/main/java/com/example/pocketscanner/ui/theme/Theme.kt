@@ -24,18 +24,18 @@ private val DarkColorScheme = darkColorScheme(
     error = ScannerRed
 )
 
-private val LightColorScheme = darkColorScheme(
+private val LightColorScheme = lightColorScheme(
     primary = ScannerBlue,
     secondary = ScannerPurple,
     tertiary = ScannerGreen,
-    background = BackgroundDark,
-    surface = SurfaceDark,
+    background = BackgroundLight,
+    surface = SurfaceLight,
     error = ScannerRed
 )
 
 @Composable
 fun PocketScannerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true, //isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
@@ -47,6 +47,7 @@ fun PocketScannerTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

@@ -1,9 +1,11 @@
 package com.example.pocketscanner.presentation.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +31,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,8 +41,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,7 +51,6 @@ import com.example.pocketscanner.presentation.viewmodels.DocumentViewModel
 import com.example.pocketscanner.presentation.viewmodels.DocumentsUiState
 import com.example.pocketscanner.ui.components.DocumentCard
 import com.example.pocketscanner.ui.components.ScanButton
-import com.example.pocketscanner.ui.theme.ScannerGreen
 import org.koin.androidx.compose.koinViewModel
 import java.util.UUID
 
@@ -62,21 +60,18 @@ fun HomeScreen(
     navigateToScan: () -> Unit,
     navigateToDocument: (String) -> Unit,
     viewModel: DocumentViewModel = koinViewModel(),
-    // New parameter to track when to refresh
     refreshTrigger: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    // This effect will run when the screen first loads AND when refreshTrigger changes
-    LaunchedEffect(Unit, refreshTrigger) {
-        viewModel.refreshDocuments()
-    }
 
     HomeScreenContent(
         uiState = uiState,
         navigateToScan = navigateToScan,
         navigateToDocument = navigateToDocument
     )
+    LaunchedEffect(Unit, refreshTrigger) {
+        viewModel.refreshDocuments()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,24 +93,16 @@ fun HomeScreenContent(
                 },
                 actions = {
                     IconButton(onClick = { /* TODO */ }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search"
-                        )
+                        Icon(Icons.Default.Search, contentDescription = "Search")
                     }
                     IconButton(onClick = { /* TODO */ }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = "Settings"
-                        )
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
                 }
             )
         },
         floatingActionButton = {
-            ScanButton {
-                navigateToScan()
-            }
+            ScanButton { navigateToScan() }
         },
         floatingActionButtonPosition = androidx.compose.material3.FabPosition.Center
     ) { innerPadding ->
@@ -124,8 +111,7 @@ fun HomeScreenContent(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            // Scanner Progress Card
-            ScannerProgressCard()
+            DocumentStatsCard(uiState.documents)
 
             DocumentListHeader()
 
@@ -133,102 +119,64 @@ fun HomeScreenContent(
                 uiState.isLoading -> LoadingState()
                 uiState.documents.isEmpty() -> EmptyDocumentsState()
                 else -> DocumentsList(
-                    documents = uiState.documents,
+                    documents = uiState.documents
+                        .sortedByDescending { it.createdAt },
                     navigateToDocument = navigateToDocument
                 )
             }
         }
     }
 
-    // Scanning overlay
     ScanningOverlay(isVisible = uiState.isScanning)
 }
 
 @Composable
-private fun ScannerProgressCard() {
+private fun DocumentStatsCard(documents: List<Document>) {
+    val totalDocs = documents.size
+    val totalPages = documents.sumOf { it.pages.size }
+    val avgPages = if (totalDocs > 0) totalPages / totalDocs else 0
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(16.dp)
+            .animateContentSize(), // smooth size changes
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Scanner Level 5",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "250 pts to next level",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "5",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            LinearProgressIndicator(
-                progress = 0.7f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                color = ScannerGreen,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = StrokeCap.Round
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Your Library",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            Spacer(Modifier.height(8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "750 pts",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Text(
-                    text = "1000 pts",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                StatsItem(label = "Documents", value = "$totalDocs")
+                StatsItem(label = "Pages", value = "$totalPages")
+                StatsItem(label = "Avg Pages", value = "$avgPages")
             }
         }
+    }
+}
+
+@Composable
+private fun StatsItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -246,7 +194,6 @@ private fun DocumentListHeader() {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
         )
-
         Text(
             text = "View All",
             style = MaterialTheme.typography.labelMedium,
@@ -257,10 +204,7 @@ private fun DocumentListHeader() {
 
 @Composable
 private fun LoadingState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
 }
@@ -273,27 +217,21 @@ private fun EmptyDocumentsState() {
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = "No documents yet",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = "Tap the scan button to create your first document",
                 style = MaterialTheme.typography.bodyMedium,
@@ -305,24 +243,30 @@ private fun EmptyDocumentsState() {
 }
 
 @Composable
-private fun DocumentsList(
+fun DocumentsList(
     documents: List<Document>,
     navigateToDocument: (String) -> Unit
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = 100.dp)
-    ) {
-        items(documents) { document ->
-            if (document.id.isEmpty()) {
-                println("Warning: Document with empty ID found: $document")
+    LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
+        items(
+            items = documents,
+            key = { it.id }
+        ) { document ->
+            AnimatedVisibility(
+                visible = true,
+                enter = slideInVertically(
+                    initialOffsetY = { fullHeight -> -50 },
+                    animationSpec = spring(stiffness = 300f)
+                ) + fadeIn()
+            ) {
+                DocumentCard(
+                    document = document,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    onClick = { navigateToDocument(document.id) }
+                )
             }
-            DocumentCard(
-                document = document,
-                onClick = {
-                    println("Navigating to document with id=${document.id}")
-                    navigateToDocument(document.id)
-                }
-            )
         }
     }
 }
@@ -332,23 +276,17 @@ private fun ScanningOverlay(isVisible: Boolean) {
     AnimatedVisibility(
         visible = isVisible,
         enter = fadeIn(),
-        exit = fadeOut(animationSpec = tween(durationMillis = 500))
+        exit = fadeOut()
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f)
         ) {
-            Box(
-                contentAlignment = Alignment.Center
-            ) {
+            Box(contentAlignment = Alignment.Center) {
                 Card(
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 8.dp
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(32.dp),
@@ -356,20 +294,15 @@ private fun ScanningOverlay(isVisible: Boolean) {
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(64.dp),
-                            strokeWidth = 6.dp,
-                            strokeCap = StrokeCap.Round
+                            strokeWidth = 6.dp
                         )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
+                        Spacer(Modifier.height(24.dp))
                         Text(
                             text = "Scanning Document...",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             text = "Hold steady for best results",
                             style = MaterialTheme.typography.bodyMedium,
@@ -382,7 +315,7 @@ private fun ScanningOverlay(isVisible: Boolean) {
     }
 }
 
-@Preview
+@Preview(showBackground = true)
 @Composable
 fun HomeScreenPreview() {
     val mockDocuments = listOf(
@@ -390,31 +323,24 @@ fun HomeScreenPreview() {
             id = UUID.randomUUID().toString(),
             title = "Invoice May 2025",
             createdAt = System.currentTimeMillis(),
-            pages = listOf(
-                Page(UUID.randomUUID().toString(), "", 0),
-                Page(UUID.randomUUID().toString(), "", 1)
-            ),
-            score = 125,
+            pages = listOf(Page(UUID.randomUUID().toString(), "", 0)),
+            score = 0,
             format = "png"
         ),
         Document(
             id = UUID.randomUUID().toString(),
             title = "Contract Draft",
             createdAt = System.currentTimeMillis() - 86400000,
-            pages = listOf(
-                Page(UUID.randomUUID().toString(), "", 0)
-            ),
-            score = 75,
+            pages = listOf(Page(UUID.randomUUID().toString(), "", 0)),
+            score = 0,
             format = "jpg"
         )
     )
-
     val previewState = DocumentsUiState(
         documents = mockDocuments,
         isLoading = false,
         isScanning = false
     )
-
     HomeScreenContent(
         uiState = previewState,
         navigateToScan = {},

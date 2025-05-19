@@ -99,17 +99,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.example.pocketscanner.ui.theme.ScannerGreen
 import com.example.pocketscanner.ui.theme.SurfaceLight
 import com.example.pocketscanner.ui.theme.VibrantBlue
+import com.example.pocketscanner.ui.theme.VibrantGreen
 import com.example.pocketscanner.ui.theme.VibrantOrange
 import com.example.pocketscanner.ui.theme.VibrantPurple
 import com.example.pocketscanner.ui.theme.VibrantRed
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
+import com.example.pocketscanner.ui.theme.ScannerGreen
 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)

@@ -1,0 +1,47 @@
+package com.example.pocketscanner.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
+
+// Custom colors for our gamified scanner
+// Primary action color (buttons, highlights)
+val ScannerBlue = Color(0xFF007AFF) // Slightly deeper blue than before
+
+// Secondary color (badges, progress, secondary buttons)
+val ScannerPurple = Color(0xFF5856D6) // More vibrant, eye-catching purple
+
+// Success states
+val ScannerGreen = Color(0xFF34C759) // iOS-style success green
+
+// Warning / Highlight
+val ScannerOrange = Color(0xFFFF9500) // Brighter orange, good for alerts
+
+// Error / Danger states
+val ScannerRed = Color(0xFFFF3B30) // Consistent red, optimized for light background
+
+// Background colors
+val BackgroundLight = Color(0xFFFAFAFC) // Slightly off-white, less strain than pure white
+
+// Surface (cards, sheets)
+val SurfaceLight = Color(0xFFFFFFFF) // Clean white for cards, panels
+
+// Text or border accent (optional)
+val BorderLight = Color(0xFFE0E0E0) // Soft gray for dividers, outlines
+
+// Neutral base
+val NeutralGray = Color(0xFF8E8E93) // iOS-styled system gray
+
+
+// Define a vibrant color palette
+val VibrantPurple = Color(0xFF6200EE)
+val VibrantRed = Color(0xFFCF6679)
+val VibrantBlue = Color(0xFF2196F3)
+val VibrantGreen = Color(0xFF4CAF50)
+val VibrantOrange = Color(0xFFFF9800)

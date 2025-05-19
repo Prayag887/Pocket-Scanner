@@ -35,7 +35,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun DocumentCard(document: Document, onClick: () -> Unit) {
+fun DocumentCard(document: Document,modifier: Modifier, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -130,16 +130,16 @@ fun DocumentCard(document: Document, onClick: () -> Unit) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun DocumentCardPreview() {
-    val mockDocument = Document(
-        title = "Sample Document",
-        pages = listOf(),
-        createdAt = System.currentTimeMillis(),
-        score = 87,
-        format = "pdf"
-    )
-
-    DocumentCard(document = mockDocument, onClick = {})
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun DocumentCardPreview() {
+//    val mockDocument = Document(
+//        title = "Sample Document",
+//        pages = listOf(),
+//        createdAt = System.currentTimeMillis(),
+//        score = 87,
+//        format = "pdf"
+//    )
+//
+//    DocumentCard(document = mockDocument, onClick = {})
+//}

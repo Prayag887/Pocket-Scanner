@@ -1,7 +1,9 @@
 [versions]
 agp = "8.10.0"
+animation = "1.8.1"
 cameraLifecycle = "1.4.2"
 coilCompose = "2.4.0"
+foundation = "1.8.1"
 koinAndroid = "4.0.0"
 koinAndroidxCompose = "4.0.0"
 koinCore = "4.0.0"
@@ -21,12 +23,14 @@ navigationCompose = "2.9.0"
 
 
 [libraries]
+androidx-animation = { module = "androidx.compose.animation:animation", version.ref = "animation" }
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraLifecycle" }
 androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "cameraLifecycle" }
 androidx-camera-extensions = { module = "androidx.camera:camera-extensions", version.ref = "cameraLifecycle" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraLifecycle" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraLifecycle" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "foundation" }
 androidx-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIconsExtended" }
 androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }

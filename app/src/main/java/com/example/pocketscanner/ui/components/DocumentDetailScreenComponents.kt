@@ -145,7 +145,6 @@ fun PreviewTab(
         )
     }
 }
-
 @Composable
 fun PagePreview(
     page: Page,
@@ -181,7 +180,9 @@ fun PagePreview(
             }
 
             "pdf" -> {
-                var bitmap by remember { mutableStateOf(viewModel.getCachedPdfBitmap(documentId, pageIndex)) }
+                // Use the new cache key format
+                val cacheKey = "$documentId:$pageIndex"
+                var bitmap by remember { mutableStateOf(viewModel.getCachedBitmap(cacheKey)) }
 
                 LaunchedEffect(Unit) {
                     if (bitmap == null) {
@@ -190,7 +191,7 @@ fun PagePreview(
                         bitmap = withContext(Dispatchers.IO) {
                             Utils().renderPdfPage(context, uri, page.order)
                         }
-                        viewModel.cachePdfBitmap(documentId, pageIndex, bitmap!!)
+                        bitmap?.let { viewModel.cacheBitmap(cacheKey, it) }
                     }
                 }
 
@@ -259,7 +260,10 @@ fun PageThumbnails(document: Document, pagerState: PagerState, viewModel: Docume
                     )
 
                     "pdf" -> {
-                        val bitmap = viewModel.getCachedPdfBitmap(document.id, index)
+                        // Use the new cache key format
+                        val cacheKey = "${document.id}:$index"
+                        val bitmap = viewModel.getCachedBitmap(cacheKey)
+
                         if (bitmap != null) {
                             Image(
                                 bitmap = bitmap.asImageBitmap(),
@@ -369,50 +373,9 @@ fun DetailsTab(document: Document) {
         item { AnimatedDetailItem("Total Pages", document.pages.size.toString()) }
         item {
             AnimatedDetailItem(
-                "Document ID",
-                if (document.id.length >= 8) document.id.substring(0, 8) else document.id
+                "Document Type",
+                document.format
             )
-        }
-        item { AnimatedDetailItem("Points Earned", "${document.score} pts") }
-
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Document Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-
-            if (document.tags.isEmpty()) {
-                Text(
-                    "No tags added yet",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    document.tags.forEachIndexed { i, tag ->
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = fadeIn(animationSpec = tween(300)) + expandHorizontally(animationSpec = tween(300)),
-                            modifier = Modifier.animateItem()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.secondaryContainer)
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    tag,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
