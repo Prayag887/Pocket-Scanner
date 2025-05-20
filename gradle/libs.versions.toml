@@ -1,5 +1,7 @@
 [versions]
 agp = "8.10.0"
+firebaseAuth = "23.2.0"
+playServicesAuth = "21.3.0"
 animation = "1.8.1"
 cameraLifecycle = "1.4.2"
 coilCompose = "2.4.0"
@@ -56,6 +58,11 @@ koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", versi
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koinCore" }
 koin-test-junit5 = { module = "io.insert-koin:koin-test-junit5", version.ref = "koinTestJunit5" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
+
+#firebase login
+firebase-auth = { module = "com.google.firebase:firebase-auth", version.ref = "firebaseAuth" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
+
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

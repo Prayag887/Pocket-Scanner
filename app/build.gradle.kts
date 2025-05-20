@@ -4,14 +4,15 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.pocketscanner"
+    namespace = "com.prayag.pocketscanner"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.pocketscanner"
+//        applicationId = "com.prayag.pocketscanner"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -104,5 +105,13 @@ dependencies {
 
     implementation (libs.androidx.foundation)
     implementation (libs.androidx.animation)
+
+
+//    firebase login
+
+    implementation (libs.firebase.auth)
+    implementation (libs.play.services.auth)
+    implementation(platform("com.google.firebase:firebase-bom:33.13.0"))
+    implementation("com.google.firebase:firebase-analytics")
 
 }
