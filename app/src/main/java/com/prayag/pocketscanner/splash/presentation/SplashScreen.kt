@@ -1,5 +1,6 @@
 package com.prayag.pocketscanner.splash.presentation
 
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -12,9 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import com.prayag.pocketscanner.auth.domain.model.User
+import com.prayag.pocketscanner.auth.presentation.login.AuthState
 import com.prayag.pocketscanner.auth.presentation.login.LoginViewModel
 import com.prayag.pocketscanner.auth.presentation.login.SkyAnimationState
 import com.prayag.pocketscanner.auth.presentation.utils.StarrySkyBackground
@@ -33,6 +36,7 @@ fun SplashScreen(
     val alpha = remember { Animatable(0f) }
     val authState by viewModel.authState.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Precompute starry background
     LaunchedEffect(Unit) {
@@ -45,20 +49,21 @@ fun SplashScreen(
     LaunchedEffect(Unit) {
         alpha.animateTo(1f, animationSpec = tween(durationMillis = 1000))
         delay(5200)
-        viewModel.tryAutoLogin()
+        viewModel.tryAutoLogin(context)
     }
 
     // Handle login result and fade out before navigating
     LaunchedEffect(authState) {
         when (authState) {
-            is LoginViewModel.AuthState.Success -> {
+            is AuthState.Success -> {
                 alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
-                onLoginSuccess((authState as LoginViewModel.AuthState.Success).user)
+                onLoginSuccess((authState as AuthState.Success).user)
             }
 
-            is LoginViewModel.AuthState.Error -> {
+            is AuthState.Error -> {
                 alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
-                onLoginFailed(animationState.value) // <-- pass the current animation state
+                Toast.makeText(context, "Login failed, may affect cloud sync in future", Toast.LENGTH_SHORT).show()
+                onLoginFailed(animationState.value)
             }
 
             else -> Unit

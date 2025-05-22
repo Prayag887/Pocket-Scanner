@@ -155,13 +155,7 @@ fun LoginScreen(
                             "Could not sign in. You can still use the app, but cloud sync won't be available in future.",
                             Toast.LENGTH_LONG
                         ).show()
-                        onLoginSuccess(
-                            User(
-                                uid = "guest-${System.currentTimeMillis()}",
-                                name = "Guest User",
-                                email = ""
-                            )
-                        )
+                        onLoginSuccess(User())
                     }
                 }
 

@@ -1,0 +1,509 @@
+package com.prayag.pocketscanner.auth.presentation.utils
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.prayag.pocketscanner.R
+import com.prayag.pocketscanner.auth.presentation.login.SkyAnimationState
+import com.prayag.pocketscanner.auth.presentation.login.Snowflake
+import com.prayag.pocketscanner.auth.presentation.login.Star
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.math.*
+import kotlin.random.Random
+
+// Enhanced data classes for more fluid animations
+data class EnhancedStar(
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    val alpha: Float,
+    val pulsePhase: Float,
+    val pulseSpeed: Float,
+    val twinkleIntensity: Float,
+    val hue: Float = 0f, // For subtle color variations
+    val layer: Int = 0 // For depth layers
+)
+
+data class LiquidParticle(
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    val velocityX: Float,
+    val velocityY: Float,
+    val alpha: Float,
+    val phase: Float,
+    val frequency: Float,
+    val amplitude: Float,
+    val trail: List<Offset> = emptyList()
+)
+
+data class FlowField(
+    val x: Float,
+    val y: Float,
+    val angle: Float,
+    val strength: Float
+)
+
+@Composable
+fun StarrySkyBackground(animationState: SkyAnimationState) {
+    Canvas(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val width = size.width
+        val height = size.height
+
+        // Create gradient background for depth
+        drawGradientBackground(this, width, height)
+
+        // Draw nebula-like background effects
+        drawNebulaEffects(this, animationState, width, height)
+
+        // Draw stars in multiple layers for depth
+        drawStarLayers(this, animationState, width, height)
+
+        // Draw liquid particles with trails
+        drawLiquidParticles(this, animationState, width, height)
+
+        // Draw constellation connections
+        drawConstellationLines(this, animationState, width, height)
+
+        // Draw aurora-like flowing effects
+        drawAuroraEffects(this, animationState, width, height)
+    }
+}
+
+private fun drawGradientBackground(
+    drawScope: DrawScope,
+    width: Float,
+    height: Float
+) {
+    val gradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF0A0A1A),
+            Color(0xFF1A1A2E),
+            Color(0xFF16213E),
+            Color(0xFF0F0F23)
+        ),
+        startY = 0f,
+        endY = height
+    )
+
+    drawScope.drawRect(
+        brush = gradient,
+        size = androidx.compose.ui.geometry.Size(width, height)
+    )
+}
+
+private fun drawNebulaEffects(
+    drawScope: DrawScope,
+    animationState: SkyAnimationState,
+    width: Float,
+    height: Float
+) {
+    val time = animationState.scanLine * 0.001f
+
+    // Create multiple nebula clouds
+    repeat(3) { i ->
+        val offsetX = width * 0.3f * sin(time * 0.2f + i * 2f)
+        val offsetY = height * 0.2f * cos(time * 0.15f + i * 1.5f)
+
+        val nebulaGradient = Brush.radialGradient(
+            colors = listOf(
+                Color(0x20FF6B9D),
+                Color(0x15C471ED),
+                Color(0x0A12D8FA),
+                Color.Transparent
+            ),
+            center = Offset(
+                width * (0.3f + i * 0.35f) + offsetX,
+                height * (0.4f + i * 0.2f) + offsetY
+            ),
+            radius = width * (0.4f + i * 0.1f)
+        )
+
+        drawScope.drawCircle(
+            brush = nebulaGradient,
+            radius = width * (0.4f + i * 0.1f),
+            center = Offset(
+                width * (0.3f + i * 0.35f) + offsetX,
+                height * (0.4f + i * 0.2f) + offsetY
+            )
+        )
+    }
+}
+
+private fun drawStarLayers(
+    drawScope: DrawScope,
+    animationState: SkyAnimationState,
+    width: Float,
+    height: Float
+) {
+    // Background layer - small dim stars
+    drawStarLayer(drawScope, animationState.stars.take(50), width, height, 0.3f, 0.5f)
+
+    // Middle layer - medium stars
+    drawStarLayer(drawScope, animationState.stars.drop(50).take(30), width, height, 0.6f, 1.0f)
+
+    // Foreground layer - bright prominent stars
+    drawStarLayer(drawScope, animationState.stars.drop(80), width, height, 1.0f, 1.5f)
+}
+
+private fun drawStarLayer(
+    drawScope: DrawScope,
+    stars: List<Star>,
+    width: Float,
+    height: Float,
+    alphaMultiplier: Float,
+    sizeMultiplier: Float
+) {
+    stars.forEach { star ->
+        val x = star.x * width
+        val y = star.y * height
+        val enhancedAlpha = star.alpha * alphaMultiplier
+        val enhancedSize = star.size * sizeMultiplier
+
+        // Create pulsing effect
+        val pulseAlpha = enhancedAlpha * (0.7f + 0.3f * sin(star.pulsePhase))
+
+        // Main star body
+        drawScope.drawCircle(
+            color = Color.White.copy(alpha = pulseAlpha),
+            radius = enhancedSize,
+            center = Offset(x, y)
+        )
+
+        // Star glow effect
+        if (enhancedSize > 1.0f) {
+            val glowGradient = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = pulseAlpha * 0.3f),
+                    Color(0xFF87CEEB).copy(alpha = pulseAlpha * 0.1f),
+                    Color.Transparent
+                ),
+                center = Offset(x, y),
+                radius = enhancedSize * 4f
+            )
+
+            drawScope.drawCircle(
+                brush = glowGradient,
+                radius = enhancedSize * 4f,
+                center = Offset(x, y)
+            )
+        }
+
+        // Cross sparkle for larger stars
+        if (enhancedSize > 2.0f) {
+            drawStarSparkle(drawScope, Offset(x, y), enhancedSize, pulseAlpha)
+        }
+    }
+}
+
+private fun drawStarSparkle(
+    drawScope: DrawScope,
+    center: Offset,
+    size: Float,
+    alpha: Float
+) {
+    val sparkleLength = size * 3f
+    val sparkleWidth = size * 0.3f
+
+    // Vertical line
+    drawScope.drawLine(
+        color = Color.White.copy(alpha = alpha * 0.8f),
+        start = Offset(center.x, center.y - sparkleLength),
+        end = Offset(center.x, center.y + sparkleLength),
+        strokeWidth = sparkleWidth,
+        cap = StrokeCap.Round
+    )
+
+    // Horizontal line
+    drawScope.drawLine(
+        color = Color.White.copy(alpha = alpha * 0.8f),
+        start = Offset(center.x - sparkleLength, center.y),
+        end = Offset(center.x + sparkleLength, center.y),
+        strokeWidth = sparkleWidth,
+        cap = StrokeCap.Round
+    )
+}
+
+private fun drawLiquidParticles(
+    drawScope: DrawScope,
+    animationState: SkyAnimationState,
+    width: Float,
+    height: Float
+) {
+    animationState.snowflakes.forEach { particle ->
+        val x = particle.x * width
+        val y = particle.y * height
+
+        // Create liquid-like wobble effect
+        val wobbleX = sin(particle.wobbleOffset) * 15f
+        val wobbleY = cos(particle.wobbleOffset * 0.7f) * 8f
+
+        val finalX = x + wobbleX
+        val finalY = y + wobbleY
+
+        // Draw particle with gradient
+        val particleGradient = Brush.radialGradient(
+            colors = listOf(
+                Color(0xFF87CEEB).copy(alpha = 0.8f),
+                Color(0xFF4682B4).copy(alpha = 0.4f),
+                Color.Transparent
+            ),
+            center = Offset(finalX, finalY),
+            radius = particle.size * 2f
+        )
+
+        drawScope.drawCircle(
+            brush = particleGradient,
+            radius = particle.size * 2f,
+            center = Offset(finalX, finalY)
+        )
+
+        // Draw particle core
+        drawScope.drawCircle(
+            color = Color.White.copy(alpha = 0.9f),
+            radius = particle.size,
+            center = Offset(finalX, finalY)
+        )
+    }
+}
+
+private fun drawConstellationLines(
+    drawScope: DrawScope,
+    animationState: SkyAnimationState,
+    width: Float,
+    height: Float
+) {
+    val prominentStars = animationState.stars.filter { it.size > 2.0f }
+
+    for (i in prominentStars.indices) {
+        for (j in i + 1 until prominentStars.size) {
+            val star1 = prominentStars[i]
+            val star2 = prominentStars[j]
+
+            val distance = sqrt(
+                (star1.x - star2.x).pow(2) + (star1.y - star2.y).pow(2)
+            )
+
+            // Only connect nearby stars
+            if (distance < 0.3f) {
+                val alpha = (0.3f - distance) * 0.3f
+
+                drawScope.drawLine(
+                    color = Color(0xFF87CEEB).copy(alpha = alpha),
+                    start = Offset(star1.x * width, star1.y * height),
+                    end = Offset(star2.x * width, star2.y * height),
+                    strokeWidth = 1f,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+    }
+}
+
+private fun drawAuroraEffects(
+    drawScope: DrawScope,
+    animationState: SkyAnimationState,
+    width: Float,
+    height: Float
+) {
+    val time = animationState.scanLine * 0.002f
+
+    // Create flowing aurora bands
+    repeat(2) { i ->
+        val path = Path()
+        val waveHeight = height * 0.1f
+        val waveOffset = height * (0.3f + i * 0.4f)
+
+        path.moveTo(0f, waveOffset)
+
+        for (x in 0..width.toInt() step 10) {
+            val normalizedX = x / width
+            val wave1 = sin(normalizedX * 4f * PI + time + i * PI) * waveHeight * 0.3f
+            val wave2 = sin(normalizedX * 2f * PI + time * 1.5f + i * PI/2) * waveHeight * 0.7f
+            val y = waveOffset + wave1 + wave2
+
+            path.lineTo(x.toFloat(), y.toFloat())
+        }
+
+        // Create gradient for aurora
+        val auroraGradient = Brush.verticalGradient(
+            colors = listOf(
+                Color(0x4000FF7F),
+                Color(0x6000FFFF),
+                Color(0x40FF6B9D),
+                Color.Transparent
+            ),
+            startY = waveOffset - waveHeight,
+            endY = waveOffset + waveHeight * 2
+        )
+
+        drawScope.drawPath(
+            path = path,
+            brush = auroraGradient,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = waveHeight,
+                cap = StrokeCap.Round
+            )
+        )
+    }
+}
+
+// Enhanced animation computation with better performance
+suspend fun precomputeAnimationValues(animationState: MutableState<SkyAnimationState>) {
+    withContext(Dispatchers.Default) {
+        val targetFps = 60
+        val frameDuration = 1000L / targetFps
+        var lastFrameTime = System.currentTimeMillis()
+        val screenHeight = 2000f
+
+        // Pre-calculate lookup tables for performance
+        val sinLookup = FloatArray(360) { sin(it * PI / 180).toFloat() }
+        val cosLookup = FloatArray(360) { cos(it * PI / 180).toFloat() }
+
+        while (true) {
+            val currentTime = System.currentTimeMillis()
+            val deltaTime = (currentTime - lastFrameTime) / 1000f
+
+            if (currentTime - lastFrameTime >= frameDuration) {
+                val currentState = animationState.value
+
+                // Smooth scan line movement
+                val scanSpeed = 50f
+                val newScanLine = if (currentState.scanLine > screenHeight) {
+                    -300f
+                } else {
+                    currentState.scanLine + scanSpeed * deltaTime
+                }
+
+                // Enhanced star updates with fluid pulsing
+                val updatedStars = currentState.stars.mapIndexed { index, star ->
+                    val pulseSpeed = 0.8f + (index % 3) * 0.4f
+                    val newPulsePhase = (star.pulsePhase + deltaTime * pulseSpeed) % (2 * PI).toFloat()
+
+                    // Use lookup table for performance
+                    val lookupIndex = ((newPulsePhase * 180 / PI) % 360).toInt()
+                    val pulseAlpha = star.alpha * (0.6f + 0.4f * sinLookup[lookupIndex])
+
+                    star.copy(pulsePhase = newPulsePhase, alpha = pulseAlpha)
+                }
+
+                // Fluid particle movement with realistic physics
+                val updatedSnowflakes = currentState.snowflakes.mapIndexed { index, particle ->
+                    val windEffect = sin(currentTime * 0.001f + index * 0.5f) * 0.0005f
+                    val gravityEffect = deltaTime * particle.speed / 150f
+
+                    val newY = (particle.y + gravityEffect) % 1.2f
+                    val newWobbleOffset = (particle.wobbleOffset + deltaTime * particle.wobbleSpeed * 2f) % (2 * PI).toFloat()
+
+                    val wobbleIndex = ((newWobbleOffset * 180 / PI) % 360).toInt()
+                    val newX = (particle.x + windEffect + sinLookup[wobbleIndex] * 0.002f).coerceIn(0f, 1f)
+
+                    particle.copy(x = newX, y = newY, wobbleOffset = newWobbleOffset)
+                }
+
+                animationState.value = currentState.copy(
+                    scanLine = newScanLine,
+                    scanLineAlpha = 0.3f + 0.2f * sin(currentTime * 0.003f),
+                    stars = updatedStars,
+                    snowflakes = updatedSnowflakes
+                )
+
+                lastFrameTime = currentTime
+            }
+
+            delay(8) // Optimized delay for smooth animation
+        }
+    }
+}
+
+// Enhanced star generation with more variety
+fun generateRandomStar(): Star {
+    val layer = Random.nextInt(3)
+    val baseSize = when (layer) {
+        0 -> Random.nextFloat() * 1.0f + 0.3f  // Background stars
+        1 -> Random.nextFloat() * 2.0f + 0.8f  // Medium stars
+        else -> Random.nextFloat() * 3.0f + 1.5f // Foreground stars
+    }
+
+    return Star(
+        x = Random.nextFloat(),
+        y = Random.nextFloat(),
+        size = baseSize,
+        alpha = Random.nextFloat() * 0.6f + 0.4f,
+        pulsePhase = Random.nextFloat() * 2 * PI.toFloat()
+    )
+}
+
+// Enhanced particle generation for liquid effects
+fun generateRandomSnowflake(): Snowflake {
+    return Snowflake(
+        x = Random.nextFloat(),
+        y = Random.nextFloat() - 1f,
+        size = Random.nextFloat() * 2.0f + 0.8f,
+        speed = Random.nextFloat() * 25f + 15f,
+        wobbleOffset = Random.nextFloat() * 2 * PI.toFloat(),
+        wobbleSpeed = Random.nextFloat() * 1.5f + 0.8f
+    )
+}
+
+@Composable
+fun GoogleSignInButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.White,
+            contentColor = Color(0xFF1A1A1A),
+            disabledContainerColor = Color.White.copy(alpha = 0.4f)
+        ),
+        border = BorderStroke(0.dp, Color.Transparent),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 0.dp
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_google_logo),
+            contentDescription = "Google logo",
+            tint = Color.Unspecified,
+            modifier = Modifier.size(56.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = "Sign in with Google",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}

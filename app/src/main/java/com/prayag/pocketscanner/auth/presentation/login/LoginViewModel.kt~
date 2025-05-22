@@ -11,7 +11,6 @@ import androidx.lifecycle.viewModelScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
-import com.prayag.pocketscanner.auth.data.repository.ProceedWithoutLoginException
 import com.prayag.pocketscanner.auth.domain.usecase.SignInWithGoogleUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -77,10 +77,7 @@ fun PocketScannerApp() {
                 },
                 onLoginFailed = { animation ->
                     sharedSkyAnimation = animation
-//                    navController.navigate("login") {
-//                        popUpTo("splash") { inclusive = true }
-//                    }
-                    navController.navigate("home") {
+                    navController.navigate("login") {
                         popUpTo("splash") { inclusive = true }
                     }
                 }

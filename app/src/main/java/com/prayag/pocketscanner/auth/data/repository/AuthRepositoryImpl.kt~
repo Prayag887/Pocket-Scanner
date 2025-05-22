@@ -1,7 +1,6 @@
 package com.prayag.pocketscanner.auth.data.repository
 
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.prayag.pocketscanner.auth.domain.model.User
@@ -19,24 +18,12 @@ class AuthRepositoryImpl(
             val result = Tasks.await(firebaseAuth.signInWithCredential(credential))
             val user = result.user
             if (user != null) {
-                Result.success(
-                    User(
-                        uid = user.uid,
-                        name = user.displayName ?: "Unknown",
-                        email = user.email ?: ""
-                    )
-                )
+                Result.success(User(user.uid, user.displayName, user.email))
             } else {
                 Result.failure(Exception("User is null"))
             }
-        } catch (e: FirebaseNetworkException) {
-            // Special case: allow proceeding without login
-            Result.failure(ProceedWithoutLoginException("No internet connection"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 }
-
-// Custom exception to signal fallback login behavior
-class ProceedWithoutLoginException(message: String) : Exception(message)

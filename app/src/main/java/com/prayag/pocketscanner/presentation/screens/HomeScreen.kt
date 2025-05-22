@@ -60,18 +60,18 @@ fun HomeScreen(
     navigateToScan: () -> Unit,
     navigateToDocument: (String) -> Unit,
     viewModel: DocumentViewModel = koinViewModel(),
-    refreshTrigger: Boolean = false
+    refreshTrigger: Boolean = true
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    LaunchedEffect(uiState.documents) {
+        viewModel.refreshDocuments()
+    }
     HomeScreenContent(
         uiState = uiState,
         navigateToScan = navigateToScan,
         navigateToDocument = navigateToDocument
     )
-    LaunchedEffect(Unit, refreshTrigger) {
-        viewModel.refreshDocuments()
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
