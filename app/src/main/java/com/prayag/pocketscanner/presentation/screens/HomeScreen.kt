@@ -1,6 +1,7 @@
 package com.prayag.pocketscanner.presentation.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -60,13 +61,14 @@ fun HomeScreen(
     navigateToScan: () -> Unit,
     navigateToDocument: (String) -> Unit,
     viewModel: DocumentViewModel = koinViewModel(),
-    refreshTrigger: Boolean = true
+    refreshTrigger: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(uiState.documents) {
+    LaunchedEffect(uiState.documents.size) {
         viewModel.refreshDocuments()
     }
+
     HomeScreenContent(
         uiState = uiState,
         navigateToScan = navigateToScan,
@@ -115,15 +117,20 @@ fun HomeScreenContent(
 
             DocumentListHeader()
 
-            when {
-                uiState.isLoading -> LoadingState()
-                uiState.documents.isEmpty() -> EmptyDocumentsState()
-                else -> DocumentsList(
-                    documents = uiState.documents
-                        .sortedByDescending { it.createdAt },
-                    navigateToDocument = navigateToDocument
-                )
+            Crossfade(
+                targetState = Triple(uiState.isLoading, uiState.documents.isEmpty(), uiState.documents),
+                label = "DocumentStateCrossfade"
+            ) { (isLoading, isEmpty, documents) ->
+                when {
+                    isLoading -> LoadingState()
+                    isEmpty -> EmptyDocumentsState()
+                    else -> DocumentsList(
+                        documents = documents.sortedByDescending { it.createdAt },
+                        navigateToDocument = navigateToDocument
+                    )
+                }
             }
+
         }
     }
 

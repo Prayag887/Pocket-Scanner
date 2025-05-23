@@ -30,7 +30,7 @@ import com.prayag.pocketscanner.presentation.screens.DocumentDetailScreen
 import com.prayag.pocketscanner.presentation.screens.HomeScreen
 import com.prayag.pocketscanner.presentation.screens.ScanScreen
 import com.prayag.pocketscanner.presentation.viewmodels.DocumentViewModel
-import com.prayag.pocketscanner.splash.presentation.SplashScreen
+import com.prayag.pocketscanner.splash.presentation.screen.SplashScreen
 import com.prayag.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
 
@@ -96,9 +96,12 @@ fun PocketScannerApp() {
         }
 
         composable("home") {
+            val documentViewModel: DocumentViewModel = koinViewModel()
+            documentViewModel.uiState.collectAsState().value
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
-                navigateToDocument = { documentId -> navController.navigate("document/$documentId") }
+                navigateToDocument = { documentId -> navController.navigate("document/$documentId") },
+                refreshTrigger = false
             )
         }
 

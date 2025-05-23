@@ -40,15 +40,13 @@ class DocumentViewModel(
     private val bitmapCache = LruCache<String, Bitmap>(2)
 
     init {
-       viewModelScope.launch { loadDocuments(currentFormat.value) }
+        loadDocuments(currentFormat.value)
     }
 
     fun setCurrentFormat(format: String) {
-        viewModelScope.launch{
-            if (_currentFormat.value != format) {
-                _currentFormat.value = format
-                loadDocuments(currentFormat.value)
-            }
+        if (_currentFormat.value != format) {
+            _currentFormat.value = format
+            loadDocuments(currentFormat.value)
         }
     }
 
@@ -92,7 +90,7 @@ class DocumentViewModel(
         }
     }
 
-    suspend fun loadDocuments(desiredFormat: String) {
+    fun loadDocuments(desiredFormat: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             getDocumentsUseCase(desiredFormat).collect { documents ->

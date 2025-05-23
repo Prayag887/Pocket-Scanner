@@ -1,4 +1,4 @@
-package com.prayag.pocketscanner.splash.presentation
+package com.prayag.pocketscanner.splash.presentation.screen
 
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
