@@ -1,6 +1,12 @@
 package com.prayag.pocketscanner.auth.data.repository
 
+import android.content.Context
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.gms.tasks.Tasks
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -36,7 +42,43 @@ class AuthRepositoryImpl(
             Result.failure(e)
         }
     }
+
+    override suspend fun tryAutoLogin(context: Context, idToken: String): Result<User?> {
+        return try {
+            val credentialManager = CredentialManager.create(context)
+
+            val googleIdOption = GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(true)
+                .setServerClientId(idToken)
+                .setAutoSelectEnabled(true)
+                .build()
+
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(googleIdOption)
+                .build()
+
+            val result = credentialManager.getCredential(
+                request = request,
+                context = context
+            )
+
+            when (val credential = result.credential) {
+                is GoogleIdTokenCredential -> {
+                    val idToken = credential.idToken
+                    signInWithGoogle(idToken).getOrNull()?.let { user ->
+                        Result.success(user)
+                    } ?: Result.failure(Exception("Sign in failed"))
+                }
+                else -> Result.failure(Exception("Unexpected credential type"))
+            }
+        } catch (e: GetCredentialException) {
+            Result.success(null)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
 
 // Custom exception to signal fallback login behavior
 class ProceedWithoutLoginException(message: String) : Exception(message)

@@ -123,7 +123,7 @@ class LoginViewModel(
                 val credentialManager = CredentialManager.create(context)
 
                 val googleIdOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(true) // Only show previously signed-in accounts
+                    .setFilterByAuthorizedAccounts(true)
                     .setServerClientId(webClientId)
                     .setAutoSelectEnabled(true)
                     .build()

@@ -1,6 +1,6 @@
+// presentation/screen/SplashScreen.kt
 package com.prayag.pocketscanner.splash.presentation.screen
 
-import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -14,27 +14,29 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.prayag.pocketscanner.auth.domain.model.User
-import com.prayag.pocketscanner.auth.presentation.login.AuthState
-import com.prayag.pocketscanner.auth.presentation.login.LoginViewModel
 import com.prayag.pocketscanner.auth.presentation.login.SkyAnimationState
 import com.prayag.pocketscanner.auth.presentation.utils.StarrySkyBackground
 import com.prayag.pocketscanner.auth.presentation.utils.precomputeAnimationValues
+import com.prayag.pocketscanner.splash.presentation.viewmodel.SplashNavigationState
+import com.prayag.pocketscanner.splash.presentation.viewmodel.SplashViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun SplashScreen(
-    viewModel: LoginViewModel,
-    onLoginSuccess: (User) -> Unit,
-    onLoginFailed: (SkyAnimationState) -> Unit
+    onNavigateToHome: (SkyAnimationState) -> Unit,
+    onNavigateToLogin: (SkyAnimationState) -> Unit,
+    onNavigateToMainApp: (User) -> Unit
 ) {
+    val splashViewModel: SplashViewModel = koinViewModel()
     val animationState = remember { mutableStateOf(SkyAnimationState()) }
     val alpha = remember { Animatable(0f) }
-    val authState by viewModel.authState.collectAsState()
+    val navigationState by splashViewModel.navigationState.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -45,28 +47,34 @@ fun SplashScreen(
         }
     }
 
-    // Fade in animation and trigger login
+    // Fade in animation and trigger splash flow
     LaunchedEffect(Unit) {
         alpha.animateTo(1f, animationSpec = tween(durationMillis = 1000))
         delay(5200)
-        viewModel.tryAutoLogin(context)
+        splashViewModel.handleSplashFlow(context, animationState.value)
     }
 
-    // Handle login result and fade out before navigating
-    LaunchedEffect(authState) {
-        when (authState) {
-            is AuthState.Success -> {
+    // Handle navigation based on state
+    LaunchedEffect(navigationState) {
+        when (navigationState) {
+            is SplashNavigationState.NavigateToHome -> {
                 alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
-                onLoginSuccess((authState as AuthState.Success).user)
+                onNavigateToHome((navigationState as SplashNavigationState.NavigateToHome).animationState)
             }
 
-            is AuthState.Error -> {
+            is SplashNavigationState.NavigateToLogin -> {
                 alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
-                Toast.makeText(context, "Login failed, may affect cloud sync in future", Toast.LENGTH_SHORT).show()
-                onLoginFailed(animationState.value)
+                onNavigateToLogin((navigationState as SplashNavigationState.NavigateToLogin).animationState)
             }
 
-            else -> Unit
+            is SplashNavigationState.NavigateToMainApp -> {
+                alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
+                onNavigateToMainApp((navigationState as SplashNavigationState.NavigateToMainApp).user)
+            }
+
+            SplashNavigationState.Loading -> {
+                // Stay on splash screen
+            }
         }
     }
 

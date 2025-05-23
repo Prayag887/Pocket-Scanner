@@ -26,10 +26,10 @@ import androidx.navigation.navArgument
 import com.prayag.pocketscanner.auth.presentation.login.LoginScreen
 import com.prayag.pocketscanner.auth.presentation.login.LoginViewModel
 import com.prayag.pocketscanner.auth.presentation.login.SkyAnimationState
-import com.prayag.pocketscanner.presentation.screens.DocumentDetailScreen
-import com.prayag.pocketscanner.presentation.screens.HomeScreen
-import com.prayag.pocketscanner.presentation.screens.ScanScreen
-import com.prayag.pocketscanner.presentation.viewmodels.DocumentViewModel
+import com.prayag.pocketscanner.scanner.presentation.screens.DocumentDetailScreen
+import com.prayag.pocketscanner.scanner.presentation.screens.HomeScreen
+import com.prayag.pocketscanner.scanner.presentation.screens.ScanScreen
+import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
 import com.prayag.pocketscanner.splash.presentation.screen.SplashScreen
 import com.prayag.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
@@ -69,17 +69,21 @@ fun PocketScannerApp() {
     ) {
         composable("splash") {
             SplashScreen(
-                viewModel = loginViewModel,
-                onLoginSuccess = {
+                onNavigateToHome = { animation ->
+                    sharedSkyAnimation = animation
                     navController.navigate("home") {
                         popUpTo("splash") { inclusive = true }
                     }
                 },
-                onLoginFailed = { animation ->
+                onNavigateToLogin = { animation ->
                     sharedSkyAnimation = animation
-//                    navController.navigate("login") {
-//                        popUpTo("splash") { inclusive = true }
-//                    }
+                    navController.navigate("login") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                },
+                onNavigateToMainApp = { user ->
+                    // You can store the user data if needed
+                    // sharedUserData = user
                     navController.navigate("home") {
                         popUpTo("splash") { inclusive = true }
                     }
@@ -96,8 +100,8 @@ fun PocketScannerApp() {
         }
 
         composable("home") {
-            val documentViewModel: DocumentViewModel = koinViewModel()
-            documentViewModel.uiState.collectAsState().value
+//            val documentViewModel: DocumentViewModel = koinViewModel()
+//            documentViewModel.uiState.collectAsState().value
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
                 navigateToDocument = { documentId -> navController.navigate("document/$documentId") },

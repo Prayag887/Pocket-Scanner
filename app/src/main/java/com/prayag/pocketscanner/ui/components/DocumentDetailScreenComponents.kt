@@ -10,7 +10,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,9 +69,9 @@ import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
-import com.prayag.pocketscanner.domain.model.Document
-import com.prayag.pocketscanner.domain.model.Page
-import com.prayag.pocketscanner.presentation.viewmodels.DocumentViewModel
+import com.prayag.pocketscanner.scanner.domain.model.Document
+import com.prayag.pocketscanner.scanner.domain.model.Page
+import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
 import com.prayag.pocketscanner.utils.Utils
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
