@@ -1,5 +1,6 @@
 package com.prayag.pocketscanner.auth.presentation.login
 
+import android.app.Activity
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box

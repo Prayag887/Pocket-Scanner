@@ -72,17 +72,15 @@ fun ScanScreen(
                 scanResult?.let {
                     when {
                         !it.pages.isNullOrEmpty() -> {
-                            scannedDocumentPages = it.pages?.map { page -> page.imageUri } ?: emptyList()
+                            scannedDocumentPages = it.pages!!.map { page -> page.imageUri }
                             isPdf = false
                             showSaveDialog = true
                         }
-
                         it.pdf != null -> {
                             pdfUri = it.pdf!!.uri
                             isPdf = true
                             showSaveDialog = true
                         }
-
                         else -> {
                             onDocumentScanned(false, null)
                             pendingNavigation = true
@@ -136,23 +134,24 @@ fun ScanScreen(
                     coroutineScope.launch {
                         try {
                             if (isPdf && pdfUri != null) {
-                                // Save directly from PDF
+                                // PDF is already complete, so simply notify and navigate home.
                                 onDocumentScanned(true, pdfUri.toString())
                             } else {
-                                // Merge and save images
-                                viewModel.mergeAndSaveImages(
+                                // Await the suspend function to finish merging and saving.
+                                val savedPath = viewModel.mergeAndSaveImages(
                                     scannedDocumentPages,
                                     context.contentResolver,
                                     context.filesDir,
                                     fileName,
                                     format
                                 )
-                                onDocumentScanned(true, "saved_file_path_placeholder")
+                                onDocumentScanned(true, savedPath)
                             }
+                            // Now navigate after save completes
+                            navigateHome()
                         } catch (e: Exception) {
                             onDocumentScanned(false, null)
-                        } finally {
-                            navigateHome()
+                            // Optionally, do not navigate immediately on error.
                         }
                     }
                 }

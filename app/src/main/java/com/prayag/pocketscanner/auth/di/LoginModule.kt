@@ -13,14 +13,13 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 val loginModule = module {
-    // Provide the web client ID as a single instance
     single<String>(qualifier = named("webClientId")) {
         androidContext().getString(R.string.default_web_client_id)
     }
     single { FirebaseAuth.getInstance() }
     single<AuthRepository> { AuthRepositoryImpl(get()) }
     factory { SignInWithGoogleUseCase(get()) }
-    factory { TryAutoLoginUseCase(get(),  get(qualifier = named("webClientId"))) } // Add this line
+    factory { TryAutoLoginUseCase(get(), get(qualifier = named("webClientId"))) }
     viewModel {
         LoginViewModel(
             signInWithGoogleUseCase = get(),

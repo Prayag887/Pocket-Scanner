@@ -131,7 +131,7 @@ private fun DocumentDetailContent(
     Column(modifier = Modifier.fillMaxSize()) {
         TabsRow(tabs = tabs, selectedTabIndex = selectedTabIndex, onTabSelected = onTabSelected)
         when (selectedTabIndex) {
-            0 -> PreviewTab(document, navigateBack = navigateBack)
+            0 -> PreviewTab(document, navigateBack = navigateBack, onShare = {})
             1 -> DetailsTab(document)
             2 -> TextTab(document)
         }
