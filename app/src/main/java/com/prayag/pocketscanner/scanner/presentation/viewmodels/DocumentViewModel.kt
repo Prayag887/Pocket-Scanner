@@ -51,13 +51,12 @@ class DocumentViewModel(
 
     // Improved bitmap cache with safer memory management
     private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
-    private val cacheSize = maxMemory / 8 // 1/8th of available memory
+    private val cacheSize = maxMemory / 8
 
     private val bitmapCache = object : LruCache<String, Bitmap>(cacheSize) {
         override fun sizeOf(key: String, bitmap: Bitmap): Int {
             return bitmap.allocationByteCount / 1024
         }
-        // Removed entryRemoved to prevent premature recycling
     }
 
     // Job management for cancellation

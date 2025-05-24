@@ -12,6 +12,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -56,19 +59,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
-import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Scale
 import com.prayag.pocketscanner.scanner.domain.model.Document
 import com.prayag.pocketscanner.scanner.domain.model.Page
 import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
@@ -85,6 +95,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PreviewTab(
@@ -98,20 +109,13 @@ fun PreviewTab(
     val pagerState = rememberPagerState { document.pages.size }
     val context = LocalContext.current
 
+    val coroutineScope = rememberCoroutineScope()
+
     LaunchedEffect(pagerState.currentPage) {
         // scroll thumbnail strip (if needed)
     }
 
     Column(Modifier.fillMaxSize()) {
-        Text(
-            text = "Page ${pagerState.currentPage + 1} of ${document.pages.size}",
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium
-        )
-
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
@@ -130,6 +134,22 @@ fun PreviewTab(
                 currentPage = pagerState.currentPage
             )
         }
+
+        // Add the liquid navigation buttons
+        LiquidPageNavigationButtons(
+            currentPage = pagerState.currentPage,
+            totalPages = document.pages.size,
+            onPreviousPage = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                }
+            },
+            onNextPage = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                }
+            }
+        )
 
         if (document.pages.size > 1) {
             PageThumbnails(
@@ -155,6 +175,115 @@ fun PreviewTab(
 private val pdfRenderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
 @Composable
+fun ZoomableImage(
+    painter: Painter,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+
+    Image(
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+            .onSizeChanged { size = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2f
+                        offset = Offset.Zero
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures(
+                    panZoomLock = true
+                ) { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+
+                    // Only apply pan if zoomed in
+                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
+                        val maxOffsetX = (size.width * (newScale - 1)) / 2
+                        val maxOffsetY = (size.height * (newScale - 1)) / 2
+
+                        Offset(
+                            (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX),
+                            (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                        )
+                    } else {
+                        Offset.Zero
+                    }
+
+                    scale = newScale
+                    offset = newOffset
+                }
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    )
+}
+
+@Composable
+fun ZoomableBitmapImage(
+    bitmap: ImageBitmap,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+
+    Image(
+        bitmap = bitmap,
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+            .onSizeChanged { size = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2f
+                        offset = Offset.Zero
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures(
+                    panZoomLock = true
+                ) { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+
+                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
+                        val maxOffsetX = (size.width * (newScale - 1)) / 2
+                        val maxOffsetY = (size.height * (newScale - 1)) / 2
+
+                        Offset(
+                            (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX),
+                            (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+                        )
+                    } else {
+                        Offset.Zero
+                    }
+
+                    scale = newScale
+                    offset = newOffset
+                }
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    )
+}
+
+@Composable
 fun PagePreview(
     page: Page,
     context: Context,
@@ -167,8 +296,8 @@ fun PagePreview(
         page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
     }
 
+    // Early return for distant pages to optimize performance
     if (abs(currentPage - pageIndex) > 2) {
-        // Do not render distant pages
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -191,46 +320,100 @@ fun PagePreview(
     ) {
         when (fileExtension) {
             "png", "jpg", "jpeg" -> {
-                val painter = rememberAsyncImagePainter(
-                    model = ImageRequest.Builder(context)
+                // Fixed image loading with better error handling
+                val imageRequest = remember(page.imageUri) {
+                    ImageRequest.Builder(context)
                         .data(page.imageUri)
-                        .size(1080) // Limit resolution for performance
+                        .crossfade(true)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .networkCachePolicy(CachePolicy.ENABLED)
+                        .scale(Scale.FIT)
+                        .size(1080, 1920) // Better size specification
+                        .allowHardware(true) // Enable hardware acceleration
                         .build()
-                )
-
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    if (painter.state is AsyncImagePainter.State.Loading) {
-                        CircularProgressIndicator()
-                    }
                 }
+
+                SubcomposeAsyncImage(
+                    model = imageRequest,
+                    contentDescription = "Page ${pageIndex + 1}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    },
+                    error = { error ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Failed to load image",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Path: ${page.imageUri}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    },
+                    success = { success ->
+                        val painter = success.painter
+                        ZoomableImage(
+                            painter = painter,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                )
             }
 
             "pdf" -> {
                 val cacheKey = "$documentId:$pageIndex"
                 val bitmap by produceState<Bitmap?>(initialValue = null, key1 = pageIndex) {
-                    value = viewModel.getCachedBitmap(cacheKey)
-                    if (value == null) {
-                        val file = File(page.imageUri.substringBefore("#"))
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                        value = withContext(pdfRenderDispatcher) {
-                            Utils().renderPdfPage(context, uri, page.order)
-                        }?.also {
-                            viewModel.cacheBitmap(cacheKey, it)
+                    try {
+                        value = viewModel.getCachedBitmap(cacheKey)
+                        if (value == null) {
+                            val filePath = page.imageUri.substringBefore("#")
+                            val file = File(filePath)
+
+                            if (!file.exists()) {
+                                // Handle case where file doesn't exist
+                                return@produceState
+                            }
+
+                            val uri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.provider",
+                                file
+                            )
+
+                            value = withContext(pdfRenderDispatcher) {
+                                Utils().renderPdfPage(context, uri, page.order)
+                            }?.also {
+                                viewModel.cacheBitmap(cacheKey, it)
+                            }
                         }
+                    } catch (e: Exception) {
+                        // Log error or handle gracefully
+                        value = null
                     }
                 }
 
                 if (bitmap != null) {
-                    Image(
+                    ZoomableBitmapImage(
                         bitmap = bitmap!!.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -242,7 +425,6 @@ fun PagePreview(
         }
     }
 }
-
 
 @Composable
 fun LoadingView(message: String) {
@@ -266,13 +448,14 @@ fun PageThumbnails(
     viewModel: DocumentViewModel
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(90.dp)
+            .height(70.dp)
     ) {
         itemsIndexed(document.pages) { index, page ->
             val fileExtension = page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
@@ -294,14 +477,41 @@ fun PageThumbnails(
                 ) {
                     when (fileExtension) {
                         "png", "jpg", "jpeg" -> {
-                            SubcomposeAsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
+                            val thumbnailRequest = remember(page.imageUri) {
+                                ImageRequest.Builder(context)
                                     .data(page.imageUri)
                                     .size(100)
-                                    .build(),
-                                contentDescription = null,
+                                    .crossfade(true)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .build()
+                            }
+
+                            SubcomposeAsyncImage(
+                                model = thumbnailRequest,
+                                contentDescription = "Thumbnail ${index + 1}",
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                loading = {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            "?",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
                             )
                         }
 
@@ -312,7 +522,7 @@ fun PageThumbnails(
                             if (bitmap != null) {
                                 Image(
                                     bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = null,
+                                    contentDescription = "PDF Thumbnail ${index + 1}",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
@@ -343,7 +553,6 @@ fun PageThumbnails(
     }
 }
 
-
 @Composable
 fun ActionButtons(
     pagerState: PagerState,
@@ -357,7 +566,7 @@ fun ActionButtons(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         ActionButton(Icons.Default.Edit, "Edit") {
@@ -389,7 +598,6 @@ fun ActionButtons(
     }
 }
 
-
 @Composable
 private fun ActionButton(
     icon: ImageVector,
@@ -401,9 +609,6 @@ private fun ActionButton(
         Icon(icon, contentDescription = contentDesc, tint = tint)
     }
 }
-
-
-
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
