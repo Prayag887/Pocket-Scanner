@@ -49,8 +49,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.prayag.pocketscanner.scanner.domain.model.Document
 import com.prayag.pocketscanner.scanner.domain.model.Page
+import com.prayag.pocketscanner.scanner.presentation.states.DocumentsUiState
 import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
-import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentsUiState
 import com.prayag.pocketscanner.ui.components.DocumentCard
 import com.prayag.pocketscanner.ui.components.ScanButton
 import org.koin.androidx.compose.koinViewModel
@@ -66,7 +66,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(uiState.documents.size) {
         viewModel.refreshDocuments()
     }
 
@@ -148,7 +148,7 @@ private fun DocumentStatsCard(documents: List<Document>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .animateContentSize(), // smooth size changes
+            .animateContentSize(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -271,9 +271,7 @@ fun DocumentsList(
             ) {
                 DocumentCard(
                     document = document,
-                    onClick = {
-                        navigateToDocument(document.id)
-                    }
+                    onClick = { navigateToDocument(document.id) }
                 )
             }
         }

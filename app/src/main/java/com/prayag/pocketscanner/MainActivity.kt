@@ -33,6 +33,7 @@ import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewMode
 import com.prayag.pocketscanner.splash.presentation.screen.SplashScreen
 import com.prayag.pocketscanner.ui.theme.PocketScannerTheme
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.KoinContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +51,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PocketScannerTheme {
-                PocketScannerApp()
+                KoinContext {
+                    PocketScannerApp()
+                }
             }
         }
     }
@@ -100,8 +103,6 @@ fun PocketScannerApp() {
         }
 
         composable("home") {
-//            val documentViewModel: DocumentViewModel = koinViewModel()
-//            documentViewModel.uiState.collectAsState().value
             HomeScreen(
                 navigateToScan = { navController.navigate("scan") },
                 navigateToDocument = { documentId -> navController.navigate("document/$documentId") },
