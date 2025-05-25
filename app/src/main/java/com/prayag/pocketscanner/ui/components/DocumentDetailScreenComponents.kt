@@ -10,6 +10,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +84,7 @@ import coil.size.Scale
 import com.prayag.pocketscanner.scanner.domain.model.Document
 import com.prayag.pocketscanner.scanner.domain.model.Page
 import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
+import com.prayag.pocketscanner.ui.theme.VibrantOrange
 import com.prayag.pocketscanner.utils.Utils
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -94,6 +97,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -116,13 +120,16 @@ fun PreviewTab(
     }
 
     Column(Modifier.fillMaxSize()) {
+        var userScrollEnabled by remember { mutableStateOf(true) }
+
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f), // This takes up remaining space
             pageSpacing = 12.dp,
             beyondViewportPageCount = 1,
+            userScrollEnabled = userScrollEnabled,
         ) { pageIndex ->
             val page = document.pages[pageIndex]
             PagePreview(
@@ -131,25 +138,26 @@ fun PreviewTab(
                 viewModel = viewModel,
                 pageIndex = pageIndex,
                 documentId = document.id,
-                currentPage = pagerState.currentPage
+                currentPage = pagerState.currentPage,
+                onUserScrollChanged = { enabled -> userScrollEnabled = enabled }
             )
         }
 
-        // Add the liquid navigation buttons
-        LiquidPageNavigationButtons(
-            currentPage = pagerState.currentPage,
-            totalPages = document.pages.size,
-            onPreviousPage = {
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                }
-            },
-            onNextPage = {
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                }
-            }
-        )
+        // Move these components INSIDE the Column
+//        LiquidPageNavigationButtons(
+//            currentPage = pagerState.currentPage,
+//            totalPages = document.pages.size,
+//            onPreviousPage = {
+//                coroutineScope.launch {
+//                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+//                }
+//            },
+//            onNextPage = {
+//                coroutineScope.launch {
+//                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+//                }
+//            }
+//        )
 
         if (document.pages.size > 1) {
             PageThumbnails(
@@ -168,120 +176,13 @@ fun PreviewTab(
             viewModel = viewModel,
             navigateBack = navigateBack
         )
-    }
+    } // Close Column here
 }
+
 
 // Outside composable (top-level), create dispatcher once
 private val pdfRenderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
-@Composable
-fun ZoomableImage(
-    painter: Painter,
-    modifier: Modifier = Modifier
-) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    var size by remember { mutableStateOf(IntSize.Zero) }
-
-    Image(
-        painter = painter,
-        contentDescription = null,
-        contentScale = ContentScale.Fit,
-        modifier = modifier
-            .onSizeChanged { size = it }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        scale = if (scale > 1f) 1f else 2f
-                        offset = Offset.Zero
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures(
-                    panZoomLock = true
-                ) { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
-
-                    // Only apply pan if zoomed in
-                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
-                        val maxOffsetX = (size.width * (newScale - 1)) / 2
-                        val maxOffsetY = (size.height * (newScale - 1)) / 2
-
-                        Offset(
-                            (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX),
-                            (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                        )
-                    } else {
-                        Offset.Zero
-                    }
-
-                    scale = newScale
-                    offset = newOffset
-                }
-            }
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offset.x,
-                translationY = offset.y
-            )
-    )
-}
-
-@Composable
-fun ZoomableBitmapImage(
-    bitmap: ImageBitmap,
-    modifier: Modifier = Modifier
-) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    var size by remember { mutableStateOf(IntSize.Zero) }
-
-    Image(
-        bitmap = bitmap,
-        contentDescription = null,
-        contentScale = ContentScale.Fit,
-        modifier = modifier
-            .onSizeChanged { size = it }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        scale = if (scale > 1f) 1f else 2f
-                        offset = Offset.Zero
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures(
-                    panZoomLock = true
-                ) { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 5f)
-
-                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
-                        val maxOffsetX = (size.width * (newScale - 1)) / 2
-                        val maxOffsetY = (size.height * (newScale - 1)) / 2
-
-                        Offset(
-                            (offset.x + pan.x).coerceIn(-maxOffsetX, maxOffsetX),
-                            (offset.y + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
-                        )
-                    } else {
-                        Offset.Zero
-                    }
-
-                    scale = newScale
-                    offset = newOffset
-                }
-            }
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offset.x,
-                translationY = offset.y
-            )
-    )
-}
 
 @Composable
 fun PagePreview(
@@ -290,13 +191,13 @@ fun PagePreview(
     viewModel: DocumentViewModel,
     pageIndex: Int,
     documentId: String,
-    currentPage: Int
+    currentPage: Int,
+    onUserScrollChanged: (Boolean) -> Unit
 ) {
     val fileExtension = remember(page.imageUri) {
         page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
     }
 
-    // Early return for distant pages to optimize performance
     if (abs(currentPage - pageIndex) > 2) {
         Box(
             modifier = Modifier
@@ -320,7 +221,6 @@ fun PagePreview(
     ) {
         when (fileExtension) {
             "png", "jpg", "jpeg" -> {
-                // Fixed image loading with better error handling
                 val imageRequest = remember(page.imageUri) {
                     ImageRequest.Builder(context)
                         .data(page.imageUri)
@@ -329,8 +229,8 @@ fun PagePreview(
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .networkCachePolicy(CachePolicy.ENABLED)
                         .scale(Scale.FIT)
-                        .size(1080, 1920) // Better size specification
-                        .allowHardware(true) // Enable hardware acceleration
+                        .size(1080, 1920)
+                        .allowHardware(true)
                         .build()
                 }
 
@@ -371,9 +271,10 @@ fun PagePreview(
                     },
                     success = { success ->
                         val painter = success.painter
-                        ZoomableImage(
+                        ZoomableImageWithScrollControl(
                             painter = painter,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onUserScrollChanged = onUserScrollChanged
                         )
                     }
                 )
@@ -389,7 +290,6 @@ fun PagePreview(
                             val file = File(filePath)
 
                             if (!file.exists()) {
-                                // Handle case where file doesn't exist
                                 return@produceState
                             }
 
@@ -406,15 +306,15 @@ fun PagePreview(
                             }
                         }
                     } catch (e: Exception) {
-                        // Log error or handle gracefully
                         value = null
                     }
                 }
 
                 if (bitmap != null) {
-                    ZoomableBitmapImage(
+                    ZoomableBitmapImageWithScrollControl(
                         bitmap = bitmap!!.asImageBitmap(),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onUserScrollChanged = onUserScrollChanged
                     )
                 } else {
                     LoadingView("Loading PDF...")
@@ -424,6 +324,207 @@ fun PagePreview(
             else -> LoadingView("Unsupported: .$fileExtension")
         }
     }
+}
+
+@Composable
+fun ZoomableImageWithScrollControl(
+    painter: Painter,
+    modifier: Modifier = Modifier,
+    onUserScrollChanged: (Boolean) -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Track if we're currently zoomed in
+    LaunchedEffect(scale) {
+        onUserScrollChanged(scale <= 1f)
+    }
+
+    Image(
+        painter = painter,
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+            .onSizeChanged { size = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2f
+                        offset = Offset.Zero
+                        onUserScrollChanged(scale <= 1f)
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                coroutineScope.launch {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            when (event.changes.size) {
+                                2 -> { // Pinch-to-zoom
+                                    onUserScrollChanged(false)
+                                    val change1 = event.changes[0]
+                                    val change2 = event.changes[1]
+
+                                    val distanceCurrent = calculateDistance(
+                                        change1.position,
+                                        change2.position
+                                    )
+                                    val distancePrevious = calculateDistance(
+                                        change1.previousPosition,
+                                        change2.previousPosition
+                                    )
+
+                                    val newScale = (scale * (distanceCurrent / distancePrevious))
+                                        .coerceIn(0.5f, 5f)
+
+                                    // Apply panning with constraints
+                                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
+                                        val maxOffsetX = (size.width * (newScale - 1)) / 2
+                                        val maxOffsetY = (size.height * (newScale - 1)) / 2
+
+                                        Offset(
+                                            (offset.x + change1.positionChange().x).coerceIn(-maxOffsetX, maxOffsetX),
+                                            (offset.y + change1.positionChange().y).coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    } else {
+                                        Offset.Zero
+                                    }
+
+                                    scale = newScale
+                                    offset = newOffset
+                                }
+
+                                1 -> { // Single-finger drag
+                                    if (scale > 1f) {
+                                        val change = event.changes[0]
+                                        val maxOffsetX = (size.width * (scale - 1)) / 2
+                                        val maxOffsetY = (size.height * (scale - 1)) / 2
+
+                                        offset = Offset(
+                                            (offset.x + change.positionChange().x).coerceIn(-maxOffsetX, maxOffsetX),
+                                            (offset.y + change.positionChange().y).coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    )
+}
+
+@Composable
+fun ZoomableBitmapImageWithScrollControl(
+    bitmap: ImageBitmap,
+    modifier: Modifier = Modifier,
+    onUserScrollChanged: (Boolean) -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Track if we're currently zoomed in
+    LaunchedEffect(scale) {
+        onUserScrollChanged(scale <= 1f)
+    }
+
+    Image(
+        bitmap = bitmap,
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+            .onSizeChanged { size = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2f
+                        offset = Offset.Zero
+                        onUserScrollChanged(scale <= 1f)
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                coroutineScope.launch {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            when (event.changes.size) {
+                                2 -> { // Pinch-to-zoom
+                                    onUserScrollChanged(false)
+                                    val change1 = event.changes[0]
+                                    val change2 = event.changes[1]
+
+                                    val distanceCurrent = calculateDistance(
+                                        change1.position,
+                                        change2.position
+                                    )
+                                    val distancePrevious = calculateDistance(
+                                        change1.previousPosition,
+                                        change2.previousPosition
+                                    )
+
+                                    val newScale = (scale * (distanceCurrent / distancePrevious))
+                                        .coerceIn(0.5f, 5f)
+
+                                    // Apply panning with constraints
+                                    val newOffset = if (newScale > 1f && size != IntSize.Zero) {
+                                        val maxOffsetX = (size.width * (newScale - 1)) / 2
+                                        val maxOffsetY = (size.height * (newScale - 1)) / 2
+
+                                        Offset(
+                                            (offset.x + change1.positionChange().x).coerceIn(-maxOffsetX, maxOffsetX),
+                                            (offset.y + change1.positionChange().y).coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    } else {
+                                        Offset.Zero
+                                    }
+
+                                    scale = newScale
+                                    offset = newOffset
+                                }
+
+                                1 -> { // Single-finger drag
+                                    if (scale > 1f) {
+                                        val change = event.changes[0]
+                                        val maxOffsetX = (size.width * (scale - 1)) / 2
+                                        val maxOffsetY = (size.height * (scale - 1)) / 2
+
+                                        offset = Offset(
+                                            (offset.x + change.positionChange().x).coerceIn(-maxOffsetX, maxOffsetX),
+                                            (offset.y + change.positionChange().y).coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+    )
+}
+
+// Helper function from your original code
+private fun calculateDistance(point1: Offset, point2: Offset): Float {
+    val dx = point1.x - point2.x
+    val dy = point1.y - point2.y
+    return sqrt(dx * dx + dy * dy)
 }
 
 @Composable
@@ -460,7 +561,7 @@ fun PageThumbnails(
         itemsIndexed(document.pages) { index, page ->
             val fileExtension = page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
             val isSelected = pagerState.currentPage == index
-            val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray
+            val borderColor = if (isSelected) VibrantOrange else Color.Gray
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -546,7 +647,7 @@ fun PageThumbnails(
                 Text(
                     text = "${index + 1}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isSelected) VibrantOrange else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
