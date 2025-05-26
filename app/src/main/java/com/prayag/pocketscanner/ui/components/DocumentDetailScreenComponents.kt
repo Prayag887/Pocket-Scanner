@@ -1,7 +1,9 @@
 package com.prayag.pocketscanner.ui.components
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -98,6 +100,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.sqrt
+import androidx.core.net.toUri
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -675,7 +678,27 @@ fun ActionButtons(
         }
 
         ActionButton(Icons.Default.Share, "Share") {
-            onShare(document)
+            val imageUri = document.pages.getOrNull(pagerState.currentPage)?.imageUri
+            if (imageUri != null) {
+                val file = File(imageUri.toUri().path ?: return@ActionButton)
+                val fileUri: Uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.provider", // make sure to match manifest
+                    file
+                )
+
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                try {
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Document Page"))
+                } catch (e: Exception) {
+                    Toast.makeText(context, "No app found to share", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         ActionButton(
