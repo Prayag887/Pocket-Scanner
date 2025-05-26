@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.prayag.pocketscanner.auth.domain.model.User
 import com.prayag.pocketscanner.auth.presentation.utils.GoogleSignInButton
-import com.prayag.pocketscanner.auth.presentation.utils.StarrySkyBackground
 import com.prayag.pocketscanner.auth.presentation.utils.generateRandomSnowflake
 import com.prayag.pocketscanner.auth.presentation.utils.generateRandomStar
 import com.prayag.pocketscanner.ui.theme.VibrantGreen
@@ -66,7 +65,7 @@ fun LoginScreen(
                 )
             )
     ) {
-        StarrySkyBackground(animationState)
+//        StarrySkyBackground(animationState)
 
         Column(
             modifier = Modifier

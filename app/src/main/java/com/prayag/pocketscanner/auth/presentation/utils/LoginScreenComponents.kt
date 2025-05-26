@@ -195,7 +195,7 @@ fun generateRandomSnowflake(): Snowflake {
         // Start particles from random positions above the screen
         y = Random.nextFloat() * -1f,
         // Keep sizes reasonable for better performance
-        size = Random.nextFloat() * 1.2f + 0.5f,
+        size = Random.nextFloat() * 2f + 0.5f,
         // Consistent speeds for smoother movement
         speed = Random.nextFloat() * 15f + 10f,
         wobbleOffset = Random.nextFloat() * 6.28f,
