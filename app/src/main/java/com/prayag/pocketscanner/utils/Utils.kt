@@ -6,6 +6,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.core.graphics.createBitmap
+import java.io.File
 
 class Utils {
     fun renderPdfPage(context: Context, uri: Uri, pageIndex: Int): Bitmap? {
@@ -14,7 +15,15 @@ class Utils {
         var page: PdfRenderer.Page? = null
 
         try {
-            fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+            fileDescriptor = if (uri.scheme == "file") {
+                // Open ParcelFileDescriptor directly from the File path
+                val file = File(uri.path ?: "")
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            } else {
+                // Use content resolver for other Uri schemes (e.g. content://)
+                context.contentResolver.openFileDescriptor(uri, "r")
+            } ?: return null
+
             renderer = PdfRenderer(fileDescriptor)
 
             if (pageIndex >= renderer.pageCount) {
@@ -34,5 +43,4 @@ class Utils {
             fileDescriptor?.close()
         }
     }
-
 }

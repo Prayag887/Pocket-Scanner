@@ -1,7 +1,9 @@
 package com.prayag.pocketscanner
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -26,6 +29,8 @@ import androidx.navigation.navArgument
 import com.prayag.pocketscanner.auth.presentation.login.LoginScreen
 import com.prayag.pocketscanner.auth.presentation.login.LoginViewModel
 import com.prayag.pocketscanner.auth.presentation.login.SkyAnimationState
+import com.prayag.pocketscanner.scanner.domain.model.Document
+import com.prayag.pocketscanner.scanner.domain.model.Page
 import com.prayag.pocketscanner.scanner.presentation.screens.DocumentDetailScreen
 import com.prayag.pocketscanner.scanner.presentation.screens.HomeScreen
 import com.prayag.pocketscanner.scanner.presentation.screens.ScanScreen
@@ -36,11 +41,14 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.KoinContext
 
 class MainActivity : ComponentActivity() {
+    private var externalPdfUri: Uri? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val cameraPermission = Manifest.permission.CAMERA
+        handleIncomingIntent(intent)
 
+        val cameraPermission = Manifest.permission.CAMERA
         if (ContextCompat.checkSelfPermission(this, cameraPermission) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
@@ -52,24 +60,62 @@ class MainActivity : ComponentActivity() {
         setContent {
             PocketScannerTheme {
                 KoinContext {
-                    PocketScannerApp()
+                    PocketScannerApp(initialPdfUri = externalPdfUri)
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            intent.data?.let { uri ->
+                if (uri.toString().endsWith(".pdf", ignoreCase = true) ||
+                    intent.type == "application/pdf") {
+                    externalPdfUri = uri
+                }
+            }
+        }
+    }
+
+    private fun enableEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun PocketScannerApp() {
+fun PocketScannerApp(initialPdfUri: Uri? = null) {
     val navController = rememberNavController()
     val loginViewModel: LoginViewModel = koinViewModel()
     var sharedSkyAnimation by remember { mutableStateOf(SkyAnimationState()) }
 
+    val startDestination = if (initialPdfUri != null) "external_pdf" else "splash"
+
     NavHost(
         navController = navController,
-        startDestination = "splash"
+        startDestination = startDestination
     ) {
+        // Add external PDF viewer route
+        composable("external_pdf") {
+            if (initialPdfUri != null) {
+                ExternalPdfViewerScreen(
+                    pdfUri = initialPdfUri,
+                    navigateBack = {
+                        // Finish the activity when viewing external PDFs
+                        navController.navigate("home") {
+                            popUpTo("external_pdf") { inclusive = true }
+                        }
+                    }
+                )
+            }
+        }
+
         composable("splash") {
             SplashScreen(
                 onNavigateToHome = { animation ->
@@ -157,5 +203,51 @@ fun LoginRoute(
             }
         },
         onGoogleSignInClick = {}
+    )
+}
+
+@Composable
+fun ExternalPdfViewerScreen(
+    pdfUri: Uri,
+    navigateBack: () -> Unit
+) {
+    var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    // Create a Document object from the external PDF URI
+    val externalDocument = createDocumentFromUri(pdfUri)
+
+    DocumentDetailScreen(
+        document = externalDocument,
+        navigateBack = navigateBack,
+        selectedTabIndex = selectedTabIndex,
+        onTabSelected = { selectedTabIndex = it },
+        externalPdfUri = pdfUri,
+        externalPdfName = externalDocument.title,
+        isExternalDocument = true
+    )
+}
+
+fun createDocumentFromUri(uri: Uri): Document {
+    val fileName = uri.lastPathSegment ?: "External PDF"
+    val cleanFileName = if (fileName.endsWith(".pdf", ignoreCase = true)) {
+        fileName.substring(0, fileName.length - 4)
+    } else {
+        fileName
+    }
+
+    return Document(
+        id = "external_${uri.hashCode()}",
+        title = cleanFileName,
+        score = 0,
+        createdAt = System.currentTimeMillis(),
+        pages = listOf(
+            Page(
+                id = "external_page_1",
+                imageUri = uri.toString(),
+                order = 0
+            )
+        ),
+        format = "pdf",
+        tags = listOf("external")
     )
 }

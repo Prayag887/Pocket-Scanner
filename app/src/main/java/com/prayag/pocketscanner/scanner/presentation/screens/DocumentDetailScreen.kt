@@ -1,5 +1,6 @@
 package com.prayag.pocketscanner.scanner.presentation.screens
 
+import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +23,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,6 +40,7 @@ import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewMode
 import com.prayag.pocketscanner.ui.components.DetailsTab
 import com.prayag.pocketscanner.ui.components.PreviewTab
 import com.prayag.pocketscanner.ui.components.TextTab
+import com.prayag.pocketscanner.utils.PdfPageExtractor
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -46,25 +50,56 @@ fun DocumentDetailScreen(
     navigateBack: () -> Unit,
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
+    isExternalDocument: Boolean = false,
+    externalPdfUri: Uri? = null,
+    externalPdfName: String? = null
 ) {
-    val viewModel : DocumentViewModel = koinViewModel()
-    val uiState by viewModel.uiState.collectAsState()
+    // State for external PDF document
     val context = LocalContext.current
-    val documentId = uiState.documents.find { it.id == document?.id }
+    val externalDocument by remember(externalPdfUri) {
+        derivedStateOf {
+            if (isExternalDocument && externalPdfUri != null && externalPdfName != null) {
+                PdfPageExtractor().createDocumentFromExternalPdf(
+                    context,
+                    externalPdfUri,
+                    externalPdfName
+                )
+            } else null
+        }
+    }
 
+    if (isExternalDocument && externalDocument != null) {
+        DocumentDetailContent(
+            document = externalDocument!!,
+            tabs = listOf("Preview"),
+            selectedTabIndex = 0,
+            onTabSelected = {},
+            navigateBack = navigateBack,
+            isExternalDocument = true
+        )
+        return
+    }
+
+    // Regular document handling
+    val viewModel: DocumentViewModel = koinViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+
+    val documentId = uiState.documents.find { it.id == document?.id }
     LaunchedEffect(documentId) {
         viewModel.loadDocumentPages(documentId.toString(), context)
     }
+
     Scaffold(
         topBar = {
             DocumentDetailTopBar(
                 title = document?.title ?: "Loading...",
-                navigateBack = navigateBack
+                navigateBack = navigateBack,
+                showEditActions = true
             )
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            if (uiState.isLoading) {
+            if (uiState.isLoading && (!isExternalDocument)) {
                 LoadingContent()
             } else {
                 document?.let {
@@ -74,8 +109,16 @@ fun DocumentDetailScreen(
                         selectedTabIndex = selectedTabIndex,
                         onTabSelected = onTabSelected,
                         navigateBack = navigateBack,
+                        isExternalDocument = false
                     )
-                } ?: println("Document not found")
+                } ?: run {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Document not found")
+                    }
+                }
             }
         }
     }
@@ -83,7 +126,11 @@ fun DocumentDetailScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DocumentDetailTopBar(title: String, navigateBack: () -> Unit) {
+private fun DocumentDetailTopBar(
+    title: String,
+    navigateBack: () -> Unit,
+    showEditActions: Boolean = true
+) {
     TopAppBar(
         title = {
             Text(
@@ -101,8 +148,10 @@ private fun DocumentDetailTopBar(title: String, navigateBack: () -> Unit) {
             IconButton(onClick = { /* Share */ }) {
                 Icon(Icons.Default.Share, contentDescription = "Share")
             }
-            IconButton(onClick = { /* Edit */ }) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit")
+            if (showEditActions) {
+                IconButton(onClick = { /* Edit */ }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                }
             }
         }
     )
@@ -126,18 +175,21 @@ private fun DocumentDetailContent(
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit,
     navigateBack: () -> Unit,
-
+    isExternalDocument: Boolean = false
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         TabsRow(tabs = tabs, selectedTabIndex = selectedTabIndex, onTabSelected = onTabSelected)
         when (selectedTabIndex) {
-            0 -> PreviewTab(document, navigateBack = navigateBack)
-            1 -> DetailsTab(document)
-            2 -> TextTab(document)
+            0 -> PreviewTab(
+                document = document,
+                navigateBack = navigateBack,
+                isExternalDocument = isExternalDocument
+            )
+            1 -> if (!isExternalDocument) DetailsTab(document)
+            2 -> if (!isExternalDocument) TextTab(document)
         }
     }
 }
-
 
 @Composable
 private fun TabsRow(

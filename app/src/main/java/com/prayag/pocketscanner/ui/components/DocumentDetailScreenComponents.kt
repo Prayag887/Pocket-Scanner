@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -12,11 +13,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +78,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import coil.compose.SubcomposeAsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -100,7 +100,6 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.sqrt
-import androidx.core.net.toUri
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -110,13 +109,12 @@ fun PreviewTab(
     onEdit: (Document, Int) -> Unit = { _, _ -> },
     onShare: (Document) -> Unit = {},
     navigateBack: () -> Unit = {},
-    onDeleteSuccess: () -> Unit = {}
+    onDeleteSuccess: () -> Unit = {},
+    isExternalDocument: Boolean = false
 ) {
     val viewModel: DocumentViewModel = koinViewModel()
     val pagerState = rememberPagerState { document.pages.size }
     val context = LocalContext.current
-
-    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(pagerState.currentPage) {
         // scroll thumbnail strip (if needed)
@@ -182,8 +180,6 @@ fun PreviewTab(
     } // Close Column here
 }
 
-
-// Outside composable (top-level), create dispatcher once
 private val pdfRenderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
 
@@ -195,7 +191,8 @@ fun PagePreview(
     pageIndex: Int,
     documentId: String,
     currentPage: Int,
-    onUserScrollChanged: (Boolean) -> Unit
+    onUserScrollChanged: (Boolean) -> Unit,
+    isExternalDocument: Boolean = false
 ) {
     val fileExtension = remember(page.imageUri) {
         page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
@@ -287,44 +284,37 @@ fun PagePreview(
                 val cacheKey = "$documentId:$pageIndex"
                 val bitmap by produceState<Bitmap?>(initialValue = null, key1 = pageIndex) {
                     try {
-                        value = viewModel.getCachedBitmap(cacheKey)
-                        if (value == null) {
-                            val filePath = page.imageUri.substringBefore("#")
-                            val file = File(filePath)
-
-                            if (!file.exists()) {
-                                return@produceState
-                            }
-
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.provider",
-                                file
-                            )
+                        Log.d("PagePreview", "produceState started for pageIndex $pageIndex")
+                        val cached = viewModel.getCachedBitmap(cacheKey)
+                        if (cached != null) {
+                            Log.d("PagePreview", "Bitmap loaded from cache")
+                            value = cached
+                        } else {
+                            val rawUri = page.imageUri.substringBefore("#")  // strip fragment
+                            val file = File(rawUri)
+                            val uri = Uri.fromFile(file)
+                            Log.d("PagePreview", "Rendering PDF page from $uri")
 
                             value = withContext(pdfRenderDispatcher) {
                                 Utils().renderPdfPage(context, uri, page.order)
-                            }?.also {
-                                viewModel.cacheBitmap(cacheKey, it)
+                            }
+
+                            if (value != null) {
+                                Log.d("PagePreview", "Bitmap rendered successfully")
+                                viewModel.cacheBitmap(cacheKey, value!!)
+                            } else {
+                                Log.e("PagePreview", "Failed to render bitmap, result is null")
                             }
                         }
                     } catch (e: Exception) {
+                        Log.e("PagePreview", "Error in produceState while rendering PDF page", e)
                         value = null
                     }
                 }
-
-                if (bitmap != null) {
-                    ZoomableBitmapImageWithScrollControl(
-                        bitmap = bitmap!!.asImageBitmap(),
-                        modifier = Modifier.fillMaxSize(),
-                        onUserScrollChanged = onUserScrollChanged
-                    )
-                } else {
-                    LoadingView("Loading PDF...")
-                }
             }
 
-            else -> LoadingView("Unsupported: .$fileExtension")
+
+                else -> LoadingView("Unsupported: .$fileExtension")
         }
     }
 }

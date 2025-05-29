@@ -119,4 +119,7 @@ dependencies {
     implementation ("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
+    implementation ("com.tom-roush:pdfbox-android:2.0.27.0")
+
+
 }
