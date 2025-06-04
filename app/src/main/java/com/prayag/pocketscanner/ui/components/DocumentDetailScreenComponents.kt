@@ -50,6 +50,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -66,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,6 +90,7 @@ import com.prayag.pocketscanner.scanner.domain.model.Page
 import com.prayag.pocketscanner.scanner.presentation.viewmodels.DocumentViewModel
 import com.prayag.pocketscanner.ui.theme.VibrantOrange
 import com.prayag.pocketscanner.utils.Utils
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -98,6 +101,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -127,7 +131,7 @@ fun PreviewTab(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f), // This takes up remaining space
+                .weight(1f),
             pageSpacing = 12.dp,
             beyondViewportPageCount = 1,
             userScrollEnabled = userScrollEnabled,
@@ -143,22 +147,6 @@ fun PreviewTab(
                 onUserScrollChanged = { enabled -> userScrollEnabled = enabled }
             )
         }
-
-        // Move these components INSIDE the Column
-//        LiquidPageNavigationButtons(
-//            currentPage = pagerState.currentPage,
-//            totalPages = document.pages.size,
-//            onPreviousPage = {
-//                coroutineScope.launch {
-//                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
-//                }
-//            },
-//            onNextPage = {
-//                coroutineScope.launch {
-//                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-//                }
-//            }
-//        )
 
         if (document.pages.size > 1) {
             PageThumbnails(
@@ -177,11 +165,10 @@ fun PreviewTab(
             viewModel = viewModel,
             navigateBack = navigateBack
         )
-    } // Close Column here
+    }
 }
 
 private val pdfRenderDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-
 
 @Composable
 fun PagePreview(
@@ -198,7 +185,12 @@ fun PagePreview(
         page.imageUri.substringAfterLast('.', "").substringBefore('#').lowercase()
     }
 
-    if (abs(currentPage - pageIndex) > 2) {
+    // Stable check - only compute once and remember it
+    val shouldRender = remember(currentPage, pageIndex) {
+        abs(currentPage - pageIndex) <= 2
+    }
+
+    if (!shouldRender) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -281,43 +273,140 @@ fun PagePreview(
             }
 
             "pdf" -> {
-                val cacheKey = "$documentId:$pageIndex"
-                val bitmap by produceState<Bitmap?>(initialValue = null, key1 = pageIndex) {
-                    try {
-                        Log.d("PagePreview", "produceState started for pageIndex $pageIndex")
-                        val cached = viewModel.getCachedBitmap(cacheKey)
-                        if (cached != null) {
-                            Log.d("PagePreview", "Bitmap loaded from cache")
-                            value = cached
-                        } else {
-                            val rawUri = page.imageUri.substringBefore("#")  // strip fragment
-                            val file = File(rawUri)
-                            val uri = Uri.fromFile(file)
-                            Log.d("PagePreview", "Rendering PDF page from $uri")
-
-                            value = withContext(pdfRenderDispatcher) {
-                                Utils().renderPdfPage(context, uri, page.order)
-                            }
-
-                            if (value != null) {
-                                Log.d("PagePreview", "Bitmap rendered successfully")
-                                viewModel.cacheBitmap(cacheKey, value!!)
-                            } else {
-                                Log.e("PagePreview", "Failed to render bitmap, result is null")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("PagePreview", "Error in produceState while rendering PDF page", e)
-                        value = null
-                    }
-                }
+                PdfPageRenderer(
+                    page = page,
+                    pageIndex = pageIndex,
+                    documentId = documentId,
+                    context = context,
+                    viewModel = viewModel,
+                    onUserScrollChanged = onUserScrollChanged
+                )
             }
 
-
-                else -> LoadingView("Unsupported: .$fileExtension")
+            else -> LoadingView("Unsupported: .$fileExtension")
         }
     }
 }
+
+@Composable
+private fun PdfPageRenderer(
+    page: Page,
+    pageIndex: Int,
+    documentId: String,
+    context: Context,
+    viewModel: DocumentViewModel,
+    onUserScrollChanged: (Boolean) -> Unit
+) {
+    val cacheKey = remember { "$documentId:$pageIndex" }
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val stablePageUri = remember(page.imageUri) { page.imageUri.substringBefore("#") }
+    val stablePageOrder = remember(page.order) { page.order }
+
+    // Create a job to cancel when composable leaves
+    val coroutineScope = rememberCoroutineScope()
+    val jobRef = remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(cacheKey, stablePageUri) {
+        val job = coroutineScope.launch {
+            if (bitmap == null && !isLoading) {
+                isLoading = true
+                error = null
+
+                try {
+                    Log.d("PagePreview", "Starting render for pageIndex $pageIndex")
+
+                    // Check cache first
+                    val cached = viewModel.getCachedBitmap(cacheKey)
+                    if (cached != null) {
+                        Log.d("PagePreview", "Bitmap loaded from cache for pageIndex $pageIndex")
+                        bitmap = cached
+                        return@launch
+                    }
+
+                    val file = File(stablePageUri)
+                    val uri = Uri.fromFile(file)
+                    Log.d("PagePreview", "Rendering PDF page from $uri for pageIndex $pageIndex")
+
+                    val renderedBitmap = withContext(pdfRenderDispatcher) {
+                        Utils().renderPdfPage(context, uri, stablePageOrder)
+                    }
+
+                    if (renderedBitmap != null) {
+                        Log.d("PagePreview", "Bitmap rendered successfully for pageIndex $pageIndex")
+                        bitmap = renderedBitmap
+                        viewModel.cacheBitmap(cacheKey, renderedBitmap)
+                    } else {
+                        Log.e("PagePreview", "Failed to render bitmap for pageIndex $pageIndex")
+                        error = "Failed to render PDF page"
+                    }
+                } catch (e: CancellationException) {
+                    Log.d("PagePreview", "Rendering cancelled for pageIndex $pageIndex")
+                } catch (e: Exception) {
+                    Log.e("PagePreview", "Error rendering PDF page for pageIndex $pageIndex", e)
+                    error = "Error: ${e.message}"
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+        jobRef.value = job
+
+        onDispose {
+            job.cancel() // Cancel job on composable exit
+        }
+    }
+
+    when {
+        isLoading -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        error != null -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = error!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Page: ${pageIndex + 1}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+        bitmap != null -> {
+            val painter = remember(bitmap) { BitmapPainter(bitmap!!.asImageBitmap()) }
+            ZoomableImageWithScrollControl(
+                painter = painter,
+                modifier = Modifier.fillMaxSize(),
+                onUserScrollChanged = onUserScrollChanged
+            )
+        }
+        else -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Loading...")
+            }
+        }
+    }
+}
+
 
 @Composable
 fun ZoomableImageWithScrollControl(

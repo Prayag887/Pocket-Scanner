@@ -86,7 +86,7 @@ fun DocumentDetailScreen(
 
     val documentId = uiState.documents.find { it.id == document?.id }
     LaunchedEffect(documentId) {
-        viewModel.loadDocumentPages(documentId.toString(), context)
+        viewModel.refreshDocuments()
     }
 
     Scaffold(

@@ -1,39 +1,42 @@
 package com.prayag.pocketscanner.scanner.data.repository
 
-import android.graphics.pdf.PdfRenderer
+import android.content.Context
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.net.toUri
 import com.prayag.pocketscanner.scanner.domain.model.Document
 import com.prayag.pocketscanner.scanner.domain.model.Page
 import com.prayag.pocketscanner.scanner.domain.repository.DocumentRepository
+import com.prayag.pocketscanner.scanner.domain.repository.PdfMetadata
+import com.prayag.pocketscanner.scanner.presentation.states.cloudstorage.CloudProvider
+import com.prayag.pocketscanner.scanner.utils.FileUtils
+import com.prayag.pocketscanner.scanner.utils.PdfUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.io.File
 import java.util.UUID
-import androidx.core.net.toUri
 
 class FileSystemDocumentRepositoryImpl(
+    private val context: Context,
     private val filesDir: File
 ) : DocumentRepository {
 
     companion object {
         private const val TAG = "FileSystemDocRepo"
-        private val IMAGE_EXTENSIONS = listOf("jpg", "jpeg", "png")
         private val deletedDocumentIds = mutableSetOf<String>()
     }
 
-    //region Repository Implementation
+    private val fileUtils = FileUtils()
+    private val pdfUtils = PdfUtils(context)
+
+    //region Original Repository Implementation
     override suspend fun getAllDocuments(desiredFormat: String): Flow<List<Document>> = flow {
         val documents = loadDocumentsFromFileSystem(desiredFormat)
         emit(documents)
     }
 
     override suspend fun getDocumentById(id: String, desiredFormat: String): Document? {
-        if (isDocumentDeleted(id)) {
-            return null
-        }
-
+        if (isDocumentDeleted(id)) return null
         return findDocumentById(id, desiredFormat)
     }
 
@@ -47,15 +50,9 @@ class FileSystemDocumentRepositoryImpl(
                 it.nameWithoutExtension == id
             } ?: emptyList()
 
-            if (filesToDelete.isEmpty()) {
-                return
-            }
+            if (filesToDelete.isEmpty()) return
 
-            var allFilesDeleted = true
-            filesToDelete.forEach { file ->
-                val deleted = file.delete()
-                allFilesDeleted = allFilesDeleted && deleted
-            }
+            val allFilesDeleted = filesToDelete.all { it.delete() }
 
             if (allFilesDeleted) {
                 markDocumentAsDeleted(id)
@@ -67,40 +64,122 @@ class FileSystemDocumentRepositoryImpl(
         }
     }
 
-
-    // Overloaded with desiredFormat param
     override suspend fun getPagesForDocument(documentId: String, desiredFormat: String): List<Page> {
-        if (isDocumentDeleted(documentId)) {
-            return emptyList()
-        }
-
+        if (isDocumentDeleted(documentId)) return emptyList()
         return getDocumentPages(documentId, desiredFormat)
     }
 
+    //region External PDF Functions
+    override suspend fun openExternalPdf(uri: Uri): Document? {
+        return try {
+            if (!validatePdfAccess(uri)) return null
+
+            val pages = extractPagesFromPdf(uri)
+            if (pages.isEmpty()) return null
+
+            val metadata = getPdfMetadata(uri)
+            val documentId = UUID.randomUUID().toString()
+
+            Document(
+                id = documentId,
+                title = metadata?.title ?: "External PDF",
+                createdAt = System.currentTimeMillis(),
+                pages = pages,
+                tags = listOf("external"),
+                score = 0,
+                format = "pdf",
+                thumbnail = "$uri#page=0".toUri()
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening external PDF: ${e.message}", e)
+            null
+        }
+    }
+
+    override suspend fun importPdfFromDevice(uri: Uri): Document? {
+        return try {
+            if (!validatePdfAccess(uri)) return null
+
+            val fileName = "${UUID.randomUUID()}.pdf"
+            val cachedPath = pdfUtils.cachePdfLocally(uri, fileName)
+                ?: return null
+
+            val cachedFile = File(cachedPath)
+            val pages = pdfUtils.extractPagesFromPdf(cachedFile)
+
+            fileUtils.createDocumentFromFile(cachedFile, pages)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing PDF from device: ${e.message}", e)
+            null
+        }
+    }
+
+    override suspend fun importPdfFromCloudStorage(uri: Uri, cloudProvider: CloudProvider): Document? {
+        return try {
+            if (!validatePdfAccess(uri)) return null
+
+            val fileName = "${UUID.randomUUID()}_${cloudProvider.name.lowercase()}.pdf"
+            val cachedPath = pdfUtils.cachePdfLocally(uri, fileName)
+                ?: return null
+
+            val cachedFile = File(cachedPath)
+            val pages = pdfUtils.extractPagesFromPdf(cachedFile)
+            val document = fileUtils.createDocumentFromFile(cachedFile, pages)
+
+            // Add cloud provider tag
+            document?.copy(tags = document.tags + cloudProvider.name.lowercase())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error importing PDF from cloud: ${e.message}", e)
+            null
+        }
+    }
+
+    override suspend fun validatePdfAccess(uri: Uri): Boolean {
+        return pdfUtils.isValidPdf(uri)
+    }
+
+    override suspend fun extractPagesFromPdf(uri: Uri): List<Page> {
+        return pdfUtils.extractPagesFromPdf(uri)
+    }
+
+    override suspend fun getPdfMetadata(uri: Uri): PdfMetadata? {
+        return pdfUtils.getPdfMetadata(uri)
+    }
+
+    override suspend fun cachePdfLocally(uri: Uri): String? {
+        val fileName = "${UUID.randomUUID()}.pdf"
+        return pdfUtils.cachePdfLocally(uri, fileName)
+    }
+
+    override suspend fun syncWithCloudStorage(documentId: String, cloudProvider: CloudProvider): Boolean {
+        return try {
+            Log.d(TAG, "Syncing document $documentId with ${cloudProvider.name}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing with cloud storage: ${e.message}", e)
+            false
+        }
+    }
+
+    //region Private Helper Methods
     private fun loadDocumentsFromFileSystem(desiredFormat: String): List<Document> {
-        val supportedExtensions = listOf("jpg", "jpeg", "png", "pdf")
         val files = filesDir.listFiles()?.filter {
-            it.isFile && supportedExtensions.contains(it.extension.lowercase())
+            it.isFile && fileUtils.isSupportedFile(it)
         } ?: emptyList()
 
-        val processedDocuments = mutableListOf<Document>()
+        val documents = mutableListOf<Document>()
         val processedIds = mutableSetOf<String>()
 
         for (file in files) {
             try {
-                if (shouldSkipFile(file)) {
-                    continue
-                }
+                if (fileUtils.shouldSkipFile(file)) continue
 
                 val id = file.nameWithoutExtension
-
-                if (id in processedIds || isDocumentDeleted(id)) {
-                    continue
-                }
+                if (id in processedIds || isDocumentDeleted(id)) continue
 
                 val document = processFileAsDocument(file, desiredFormat)
                 if (document != null) {
-                    processedDocuments.add(document)
+                    documents.add(document)
                     processedIds.add(id)
                 }
             } catch (e: Exception) {
@@ -108,54 +187,24 @@ class FileSystemDocumentRepositoryImpl(
             }
         }
 
-        return processedDocuments
+        return documents
     }
-
 
     private fun processFileAsDocument(file: File, desiredFormat: String): Document? {
-        val processedFile = when {
-            isPdf(file) && isValidPdf(file) -> file
-            isImage(file) -> file
-            else -> file
+        val pages = when {
+            fileUtils.isPdf(file) && pdfUtils.isValidPdf(file) ->
+                pdfUtils.extractPagesFromPdf(file)
+            fileUtils.isImage(file) ->
+                listOf(fileUtils.createImagePage(file))
+            else -> emptyList()
         }
 
-        val pages = if (isPdf(processedFile)) getPdfPages(processedFile)
-        else listOf(
-            Page(
-                id = UUID.randomUUID().toString(),
-                imageUri = processedFile.absolutePath,
-                order = 0
-            )
-        )
-        if (pages.isEmpty()) return null
-
-        val thumbnailUri = if (isPdf(processedFile)) {
-            "${processedFile.absolutePath}#page=0".toUri()
-        } else {
-            Uri.fromFile(processedFile)
-        }
-
-        return Document(
-            id = processedFile.nameWithoutExtension,
-            title = processedFile.nameWithoutExtension,
-            createdAt = processedFile.lastModified(),
-            pages = pages,
-            tags = listOf(),
-            score = 0,
-            format = if (isPdf(processedFile)) "pdf" else processedFile.extension.lowercase(),
-            thumbnail = thumbnailUri
-        )
+        return fileUtils.createDocumentFromFile(file, pages)
     }
 
-
     private fun findDocumentById(id: String, desiredFormat: String): Document? {
-        if (isDocumentDeleted(id)) return null
-
         val files = filesDir.listFiles()?.filter {
-            it.nameWithoutExtension == id && (
-                    (desiredFormat == "pdf" && isPdf(it)) ||
-                            (desiredFormat != "pdf" && it.extension.equals(desiredFormat, ignoreCase = true))
-                    )
+            it.nameWithoutExtension == id && matchesDesiredFormat(it, desiredFormat)
         } ?: return null
 
         return files.firstOrNull()?.let { createDocumentFromFile(it, desiredFormat) }
@@ -163,94 +212,33 @@ class FileSystemDocumentRepositoryImpl(
 
     private fun createDocumentFromFile(file: File, desiredFormat: String): Document? {
         val pages = when {
-            isPdf(file) && desiredFormat == "pdf" -> getPdfPages(file)
-            isImage(file) && file.extension.equals(desiredFormat, ignoreCase = true) -> {
-                listOf(
-                    Page(
-                        id = UUID.randomUUID().toString(),
-                        imageUri = file.absolutePath,
-                        order = 0
-                    )
-                )
-            }
+            fileUtils.isPdf(file) && desiredFormat == "pdf" ->
+                pdfUtils.extractPagesFromPdf(file)
+            fileUtils.isImage(file) && file.extension.equals(desiredFormat, ignoreCase = true) ->
+                listOf(fileUtils.createImagePage(file))
             else -> emptyList()
         }
 
-        if (pages.isEmpty()) return null
-
-        return Document(
-            id = file.nameWithoutExtension,
-            title = file.nameWithoutExtension,
-            createdAt = file.lastModified(),
-            pages = pages,
-            tags = listOf(),
-            score = 0,
-            format = file.extension.lowercase()
-        )
+        return fileUtils.createDocumentFromFile(file, pages)
     }
 
     private fun getDocumentPages(documentId: String, desiredFormat: String): List<Page> {
-        if (isDocumentDeleted(documentId)) return emptyList()
-
         val file = filesDir.listFiles()?.find {
-            it.nameWithoutExtension == documentId && (
-                    (desiredFormat == "pdf" && isPdf(it)) ||
-                            (desiredFormat != "pdf" && it.extension.equals(desiredFormat, ignoreCase = true))
-                    )
+            it.nameWithoutExtension == documentId && matchesDesiredFormat(it, desiredFormat)
         } ?: return emptyList()
 
-        return if (isPdf(file)) getPdfPages(file) else listOf(
-            Page(
-                id = UUID.randomUUID().toString(),
-                imageUri = file.absolutePath,
-                order = 0
-            )
-        )
-    }
-
-    private fun isPdf(file: File?): Boolean {
-        return file?.extension.equals("pdf", ignoreCase = true)
-    }
-
-    private fun isImage(file: File): Boolean {
-        return IMAGE_EXTENSIONS.contains(file.extension.lowercase())
-    }
-
-    private fun isValidPdf(file: File): Boolean {
-        return try {
-            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                PdfRenderer(pfd).close()
-                true
-            }
-        } catch (e: Exception) {
-            false
+        return when {
+            fileUtils.isPdf(file) -> pdfUtils.extractPagesFromPdf(file)
+            fileUtils.isImage(file) -> listOf(fileUtils.createImagePage(file))
+            else -> emptyList()
         }
     }
 
-    private fun getPdfPages(pdfFile: File?): List<Page> {
-        val pages = mutableListOf<Page>()
-        try {
-            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                PdfRenderer(pfd).use { renderer ->
-                    for (i in 0 until renderer.pageCount) {
-                        pages.add(
-                            Page(
-                                id = UUID.randomUUID().toString(),
-                                imageUri = "${pdfFile?.absolutePath}#page=$i",
-                                order = i
-                            )
-                        )
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading PDF pages: ${e.message}", e)
+    private fun matchesDesiredFormat(file: File, desiredFormat: String): Boolean {
+        return when (desiredFormat) {
+            "pdf" -> fileUtils.isPdf(file)
+            else -> file.extension.equals(desiredFormat, ignoreCase = true)
         }
-        return pages
-    }
-
-    private fun shouldSkipFile(file: File): Boolean {
-        return file.name.startsWith("temp") || file.name.startsWith(".")
     }
 
     private fun markDocumentAsDeleted(id: String) {
