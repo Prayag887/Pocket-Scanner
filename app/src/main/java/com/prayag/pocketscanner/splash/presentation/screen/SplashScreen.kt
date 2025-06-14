@@ -58,17 +58,17 @@ fun SplashScreen(
     LaunchedEffect(navigationState) {
         when (navigationState) {
             is SplashNavigationState.NavigateToHome -> {
-                alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
+                alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
                 onNavigateToHome((navigationState as SplashNavigationState.NavigateToHome).animationState)
             }
 
             is SplashNavigationState.NavigateToLogin -> {
-                alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
+                alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
                 onNavigateToLogin((navigationState as SplashNavigationState.NavigateToLogin).animationState)
             }
 
             is SplashNavigationState.NavigateToMainApp -> {
-                alpha.animateTo(0f, animationSpec = tween(durationMillis = 1000))
+                alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
                 onNavigateToMainApp((navigationState as SplashNavigationState.NavigateToMainApp).user)
             }
 
