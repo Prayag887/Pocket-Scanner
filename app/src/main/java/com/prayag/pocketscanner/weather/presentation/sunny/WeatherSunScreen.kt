@@ -1,5 +1,6 @@
 package com.prayag.pocketscanner.weather.presentation.sunny
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -10,9 +11,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,11 +39,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,39 +63,32 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.prayag.pocketscanner.theme.ColorTheme
 import com.prayag.pocketscanner.theme.ThemeProvider
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 @Composable
 fun WeatherSunScreen(
-    viewModel: WeatherSunViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    viewModel: WeatherSunViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val animationCache by viewModel.animationCache.collectAsState()
     val theme = remember { ThemeProvider.getTheme() }
 
-    var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var lastTapPosition by remember { mutableStateOf<Offset?>(null) }
-    var tapTimestamp by remember { mutableStateOf(0L) }
+    var tapTimestamp by remember { mutableLongStateOf(0L) }
     var isPressed by remember { mutableStateOf(false) }
-
-    val rippleAnimations = remember { mutableStateListOf<RippleEffect>() }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            withFrameMillis {
-                rippleAnimations.removeAll { it.age > 2000 }
-            }
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -106,97 +101,68 @@ fun WeatherSunScreen(
                         tryAwaitRelease()
                         isPressed = false
                     },
-                    onTap = { offset ->
-                        lastTapPosition = offset
-                        tapTimestamp = System.currentTimeMillis()
-                        rippleAnimations.add(
-                            RippleEffect(
-                                position = offset,
-                                startTime = tapTimestamp
-                            )
-                        )
-                    }
+                    onTap = {}
                 )
             }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        dragOffset += dragAmount * 0.3f
-                    },
-                    onDragEnd = {
-                        dragOffset = Offset.Zero
-                    }
-                )
-            }
+
     ) {
         // Ambient background layers
-        AnimatedBackgroundLayers(theme, dragOffset)
+        AnimatedBackgroundLayers(theme)
 
         // Floating clouds
-        FloatingClouds(theme, dragOffset)
+        FloatingClouds(theme)
 
         // Enhanced header with parallax
-        EnhancedHeader(state, theme, dragOffset, isPressed)
+        EnhancedHeader(state, theme, isPressed)
 
         // Main sun/river scene with interaction
         animationCache?.let { cache ->
-            EnhancedSunRiverScene(
+                EnhancedSunRiverScene(
                 cache,
                 theme,
-                dragOffset,
                 lastTapPosition,
                 tapTimestamp,
-                rippleAnimations
             )
         }
 
         // Atmospheric particles
-        AtmosphericParticles(theme, dragOffset)
+        AtmosphericParticles(theme)
 
         // Interactive info cards
-        WeatherInfoCards(state, theme, dragOffset)
+        WeatherInfoCards(state, theme)
 
         // Enhanced footer with animation
         EnhancedFooter(state, theme)
 
         // Dynamic paper grain
-        DynamicPaperGrain(theme, dragOffset)
-
-        // Touch ripples
-        TouchRipples(rippleAnimations, theme)
+        DynamicPaperGrain(theme)
     }
 }
 
-data class RippleEffect(
-    val position: Offset,
-    val startTime: Long,
-    val age: Long = System.currentTimeMillis() - startTime
-)
-
 @Composable
-private fun AnimatedBackgroundLayers(theme: ColorTheme, dragOffset: Offset) {
+private fun AnimatedBackgroundLayers(theme: ColorTheme) {
     val infiniteTransition = rememberInfiniteTransition(label = "bg")
-    val layer1Offset by infiniteTransition.animateFloat(
+    val layerOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
             animation = tween(60000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "layer1"
+        label = "layerRotation"
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val centerX = size.width / 2f
-        val centerY = size.height / 2f
+        val center = Offset(size.width / 2f, size.height / 2f)
 
-        // Subtle gradient layers that respond to drag
         repeat(3) { i ->
-            val angle = layer1Offset + i * 120f + dragOffset.x * 0.05f
+            val angle = layerOffset + i * 120f
             val radius = size.maxDimension * (1.2f + i * 0.3f)
-            val offsetX = cos(angle * PI / 180f).toFloat() * 50f
-            val offsetY = sin(angle * PI / 180f).toFloat() * 50f
+
+            val offset = Offset(
+                x = cos(angle * PI / 180f).toFloat() * 50f,
+                y = sin(angle * PI / 180f).toFloat() * 50f
+            )
 
             drawCircle(
                 brush = Brush.radialGradient(
@@ -204,18 +170,18 @@ private fun AnimatedBackgroundLayers(theme: ColorTheme, dragOffset: Offset) {
                         theme.celestialColor.copy(alpha = 0.03f),
                         Color.Transparent
                     ),
-                    center = Offset(centerX + offsetX, centerY + offsetY),
+                    center = center + offset,
                     radius = radius
                 ),
                 radius = radius,
-                center = Offset(centerX + offsetX, centerY + offsetY)
+                center = center + offset
             )
         }
     }
 }
 
 @Composable
-private fun FloatingClouds(theme: ColorTheme, dragOffset: Offset) {
+private fun FloatingClouds(theme: ColorTheme) {
     val clouds = remember {
         List(5) { i ->
             CloudData(
@@ -229,13 +195,12 @@ private fun FloatingClouds(theme: ColorTheme, dragOffset: Offset) {
         }
     }
 
-
     val animationTime by rememberInfiniteTransition(label = "clouds")
         .animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(100000, easing = LinearEasing),
+                animation = tween(100_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
             label = "cloudTime"
@@ -243,59 +208,88 @@ private fun FloatingClouds(theme: ColorTheme, dragOffset: Offset) {
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         clouds.forEach { cloud ->
-            val x = ((cloud.initialX + animationTime * cloud.speed) % 1f) * size.width
-            val y = size.height * cloud.y - dragOffset.y * 0.1f * (1f - cloud.y)
+            val x =
+                ((cloud.initialX + animationTime * cloud.speed) % 1f) * size.width
+
+            val y =
+                size.height * cloud.y
 
             drawCloudShape(
                 center = Offset(x, y),
-                scale = cloud.scale * size.width * 0.15f,
-                radii = cloud.radii,
-                color = theme.ink.copy(alpha = cloud.opacity)
+                size = cloud.scale * size.width * 0.15f,
+                fillColor = theme.cloudColor.copy(alpha = cloud.opacity),
+                strokeColor = theme.paperBg.copy(alpha = cloud.opacity),
+                strokeWidth = 1f
             )
-
         }
     }
 }
 
-data class CloudData(
-    val initialX: Float,
-    val y: Float,
-    val speed: Float,
-    val scale: Float,
-    val opacity: Float,
-    val radii: List<Float>
-)
-
-
 fun DrawScope.drawCloudShape(
     center: Offset,
-    scale: Float,
-    radii: List<Float>,
-    color: Color
+    size: Float,
+    fillColor: Color,
+    strokeColor: Color,
+    strokeWidth: Float = size * 0.08f
 ) {
-    val path = Path()
-    val segments = radii.size
+    val w = size
+    val h = size * 0.6f
 
-    radii.forEachIndexed { i, radiusFactor ->
-        val angle = (i * 2f * PI / segments).toFloat()
-        val radius = scale * radiusFactor
+    val path = Path().apply {
+        // Start bottom-left
+        moveTo(center.x - w * 0.45f, center.y + h * 0.15f)
 
-        val x = center.x + cos(angle) * radius
-        val y = center.y + sin(angle) * radius * 0.6f
+        // Bottom base
+        lineTo(center.x + w * 0.45f, center.y + h * 0.15f)
 
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        // Right lobe
+        cubicTo(
+            center.x + w * 0.55f, center.y,
+            center.x + w * 0.35f, center.y - h * 0.35f,
+            center.x + w * 0.15f, center.y - h * 0.25f
+        )
+
+        // Top-right lobe
+        cubicTo(
+            center.x + w * 0.05f, center.y - h * 0.55f,
+            center.x - w * 0.05f, center.y - h * 0.55f,
+            center.x - w * 0.15f, center.y - h * 0.25f
+        )
+
+        // Left lobe
+        cubicTo(
+            center.x - w * 0.35f, center.y - h * 0.35f,
+            center.x - w * 0.55f, center.y,
+            center.x - w * 0.45f, center.y + h * 0.15f
+        )
+
+        close()
     }
 
-    path.close()
-    drawPath(path, color)
+    // Fill
+    drawPath(
+        path = path,
+        color = fillColor
+    )
+
+    // Outline
+    drawPath(
+        path = path,
+        color = strokeColor,
+        style = Stroke(
+            width = strokeWidth,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
 }
+
 
 
 @Composable
 private fun BoxScope.EnhancedHeader(
     state: SunTimeUiState,
     theme: ColorTheme,
-    dragOffset: Offset,
     isPressed: Boolean
 ) {
     val scale by animateFloatAsState(
@@ -304,11 +298,10 @@ private fun BoxScope.EnhancedHeader(
         label = "headerScale"
     )
 
-    // Temperature with parallax
+    // Temperature (anchored, calm)
     Column(
         modifier = Modifier
             .align(Alignment.TopStart)
-            .offset(x = (dragOffset.x * 0.02f).dp, y = (dragOffset.y * 0.02f).dp)
             .scale(scale)
             .padding(start = 28.dp, top = 24.dp)
     ) {
@@ -317,7 +310,7 @@ private fun BoxScope.EnhancedHeader(
             fontSize = 72.sp,
             fontWeight = FontWeight.ExtraLight,
             color = theme.ink,
-            style = androidx.compose.ui.text.TextStyle(
+            style = TextStyle(
                 shadow = Shadow(
                     color = theme.ink.copy(alpha = 0.1f),
                     offset = Offset(0f, 4f),
@@ -326,7 +319,6 @@ private fun BoxScope.EnhancedHeader(
             )
         )
 
-        // Feels like temperature
         Text(
             text = "Feels like ${state.temperature - 2}°",
             fontSize = 14.sp,
@@ -336,11 +328,10 @@ private fun BoxScope.EnhancedHeader(
         )
     }
 
-    // Animated condition badges
+    // Condition badges (time-based only)
     Column(
         modifier = Modifier
             .align(Alignment.TopEnd)
-            .offset(x = -(dragOffset.x * 0.03f).dp, y = (dragOffset.y * 0.01f).dp)
             .padding(top = 32.dp, end = 24.dp),
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -350,17 +341,16 @@ private fun BoxScope.EnhancedHeader(
             var visible by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(delay.toLong())
+                delay(delay.toLong())
                 visible = true
             }
 
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                 visible = visible,
-                enter = androidx.compose.animation.fadeIn() +
-                        androidx.compose.animation.slideInHorizontally(initialOffsetX = { it / 2 })
+                enter = fadeIn() +
+                        slideInHorizontally { it / 2 }
             ) {
                 Card(
-                    modifier = Modifier,
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = theme.ink.copy(alpha = 0.05f)
@@ -381,14 +371,301 @@ private fun BoxScope.EnhancedHeader(
     }
 }
 
+
+@Composable
+private fun AtmosphericParticles(theme: ColorTheme) {
+    val particles = remember {
+        List(30) { i ->
+            ParticleData(
+                x = Random.nextFloat(),
+                initialY = Random.nextFloat(),
+                speed = 0.00005f + Random.nextFloat() * 0.00003f,
+                size = 1f + Random.nextFloat() * 2f,
+                opacity = 0.05f + Random.nextFloat() * 0.1f,
+                phase = Random.nextFloat() * 2f * PI.toFloat()
+            )
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        particles.forEach { particle ->
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        theme.ink.copy(alpha = particle.opacity),
+                        Color.Transparent
+                    )
+                ),
+                radius = particle.size,
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun BoxScope.WeatherInfoCards(
+    state: SunTimeUiState,
+    theme: ColorTheme,
+) {
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 20.dp, vertical = 44.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+
+        // ROW 1 — slightly forward
+        Row(
+            modifier = Modifier
+                .offset(y = (-2).dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            InfoCard(
+                title = "UV INDEX",
+                value = "6",
+                subtitle = "Moderate",
+                theme = theme,
+                delay = 0
+            )
+
+            InfoCard(
+                title = "HUMIDITY",
+                value = "65%",
+                subtitle = "Normal",
+                theme = theme,
+                delay = 80
+            )
+        }
+
+        // SUBTLE RHYTHM DIVIDER (kept, but ultra-light)
+        Spacer(
+            modifier = Modifier
+                .height(1.dp)
+                .fillMaxWidth()
+                .background(theme.ink.copy(alpha = 0.02f))
+        )
+
+        // ROW 2 — slightly recessed
+        Row(
+            modifier = Modifier
+                .offset(y = (2).dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            InfoCard(
+                title = "WIND",
+                value = "12",
+                subtitle = "km/h",
+                theme = theme,
+                delay = 160
+            )
+
+            InfoCard(
+                title = "VISIBILITY",
+                value = "10",
+                subtitle = "km",
+                theme = theme,
+                delay = 240
+            )
+        }
+    }
+}
+
+
+
+
+@Composable
+private fun InfoCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    theme: ColorTheme,
+    delay: Int
+) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(delay.toLong())
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(600)) + scaleIn(initialScale = 0.85f)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(90.dp)
+                .height(100.dp)
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = 40.dp,
+                        bottomEnd = 40.dp
+                    )
+                )
+                .background(theme.ink.copy(alpha = 0.04f))
+        ) {
+            Content(title, value, subtitle, theme)
+        }
+    }
+}
+
+
+@Composable
+private fun Content(
+    title: String,
+    value: String,
+    subtitle: String,
+    theme: ColorTheme
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+
+        // Title (slightly lifted)
+        Text(
+            text = title,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.Medium,
+            color = theme.ink.copy(alpha = 0.5f),
+            modifier = Modifier.offset(y = (-6).dp)
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Value block (true center mass)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = value,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Light,
+                color = theme.ink
+            )
+
+            Text(
+                text = subtitle,
+                fontSize = 10.sp,
+                color = theme.ink.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+
+
+@Composable
+private fun BoxScope.EnhancedFooter(state: SunTimeUiState, theme: ColorTheme) {
+    val scale by rememberInfiniteTransition(label = "footer")
+        .animateFloat(
+            initialValue = 1f,
+            targetValue = 1.05f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "footerScale"
+        )
+
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 32.dp)
+            .scale(scale),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Location pin icon (you'd use actual icon)
+//        Box(
+//            modifier = Modifier
+//                .size(6.dp)
+//                .clip(CircleShape)
+//                .background(theme.ink.copy(alpha = 0.3f))
+//        )
+//
+//        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = state.city,
+            fontSize = 13.sp,
+            letterSpacing = 5.sp,
+            fontWeight = FontWeight.Medium,
+            color = theme.ink,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = theme.ink.copy(alpha = 0.1f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 4f
+                )
+            )
+        )
+    }
+}
+
+@Composable
+private fun DynamicPaperGrain(theme: ColorTheme) {
+    val points = remember {
+        buildList {
+            val random = Random(42)
+            repeat(12_000) {
+                add(
+                    Triple(
+                        random.nextFloat(),
+                        random.nextFloat(),
+                        random.nextFloat() * 0.025f
+                    )
+                )
+            }
+        }
+    }
+
+    val noiseOffset by rememberInfiniteTransition(label = "grain")
+        .animateFloat(
+            initialValue = 0f,
+            targetValue = 100f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(8000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "grainOffset"
+        )
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val grainColor =
+            if (theme.paperBg.luminance() > 0.5f) Color.Black else Color.White
+
+        for ((xN, yN, alpha) in points) {
+            val dynamicAlpha =
+                alpha * (0.8f + 0.2f * sin(noiseOffset * 0.1f + xN * 10f))
+
+            drawRect(
+                color = grainColor.copy(alpha = dynamicAlpha),
+                topLeft = Offset(
+                    x = xN * size.width,
+                    y = yN * size.height
+                ),
+                size = Size(1f, 1f)
+            )
+        }
+    }
+}
+
+
+
 @Composable
 private fun BoxScope.EnhancedSunRiverScene(
     cache: AnimationCache,
     theme: ColorTheme,
-    dragOffset: Offset,
     lastTapPosition: Offset?,
     tapTimestamp: Long,
-    rippleAnimations: List<RippleEffect>
 ) {
     val animations = rememberWeatherAnimations()
     val phase1 = animations.phase1
@@ -398,23 +675,23 @@ private fun BoxScope.EnhancedSunRiverScene(
     val verticalWave = animations.verticalWave
 
     // Sun glow pulsation
-    val glowPulse by rememberInfiniteTransition(label = "glow")
+    val glowPhase by rememberInfiniteTransition(label = "glow")
         .animateFloat(
-            initialValue = 0.8f,
-            targetValue = 1.2f,
+            initialValue = 0f,
+            targetValue = 2f * PI.toFloat(),
             animationSpec = infiniteRepeatable(
-                animation = tween(3000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
+                animation = tween(3000, easing = LinearEasing)
             ),
-            label = "glowPulse"
+            label = "glowPhase"
         )
+
+    val glowPulse = 1.0f + 0.2f * sin(glowPhase)
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(480.dp)
             .align(Alignment.Center)
-            .offset(x = (dragOffset.x * 0.05f).dp, y = (dragOffset.y * 0.08f).dp)
             .graphicsLayer {
                 compositingStrategy = CompositingStrategy.Offscreen
             }
@@ -447,6 +724,7 @@ private fun BoxScope.EnhancedSunRiverScene(
         }
 
         // CELESTIAL BODY with depth
+        // CELESTIAL BODY with depth
         clipRect(bottom = horizonY) {
             // Outer glow
             drawCircle(
@@ -470,16 +748,36 @@ private fun BoxScope.EnhancedSunRiverScene(
                 radius = sunRadius,
                 center = Offset(centerX, horizonY)
             )
+        }
 
-            // Sun surface detail
-            repeat(3) { i ->
-                val detailRadius = sunRadius * (0.3f + i * 0.15f)
-                val detailAngle = phase1 * 0.5f + i * 2f
-                val detailX = centerX + cos(detailAngle) * sunRadius * 0.3f
-                val detailY = horizonY + sin(detailAngle) * sunRadius * 0.2f
+// Sun surface detail - MOVED OUTSIDE clipRect
+        // Sun surface detail - SMOOTH FADE IN/OUT
+        repeat(3) { i ->
+            val detailRadius = sunRadius * (0.3f + i * 0.15f)
+            val detailAngle = phase1 * 0.5f + i * 2f
+            val detailX = centerX + cos(detailAngle) * sunRadius * 0.3f
+            val detailY = horizonY + sin(detailAngle) * sunRadius * 0.2f
+
+            // Use squared distance to avoid sqrt
+            val dx = detailX - centerX
+            val dy = detailY - horizonY
+            val distanceSquared = dx * dx + dy * dy
+            val sunRadiusSquared = sunRadius * sunRadius
+
+            if (distanceSquared < sunRadiusSquared && detailY < horizonY) {
+                // Fade based on how close to the edge of the sun
+                val distanceFromEdge = sunRadius - sqrt(distanceSquared)
+                val edgeFadeFactor = (distanceFromEdge / (sunRadius * 0.3f)).coerceIn(0f, 1f)
+
+                // Fade based on vertical position (fade out near horizon)
+                val verticalDistanceFromHorizon = horizonY - detailY
+                val verticalFadeFactor = (verticalDistanceFromHorizon / (sunRadius * 0.4f)).coerceIn(0f, 1f)
+
+                // Combine both fade factors
+                val finalAlpha = 0.05f * edgeFadeFactor * verticalFadeFactor
 
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.05f),
+                    color = Color.White.copy(alpha = finalAlpha),
                     radius = detailRadius,
                     center = Offset(detailX, detailY),
                     blendMode = BlendMode.Screen
@@ -762,313 +1060,6 @@ private fun BoxScope.EnhancedSunRiverScene(
                 cap = StrokeCap.Round,
                 blendMode = BlendMode.Screen
             )
-        }
-    }
-}
-
-@Composable
-private fun AtmosphericParticles(theme: ColorTheme, dragOffset: Offset) {
-    val particles = remember {
-        List(30) { i ->
-            ParticleData(
-                x = Random.nextFloat(),
-                initialY = Random.nextFloat(),
-                speed = 0.00005f + Random.nextFloat() * 0.00003f,
-                size = 1f + Random.nextFloat() * 2f,
-                opacity = 0.05f + Random.nextFloat() * 0.1f,
-                phase = Random.nextFloat() * 2f * PI.toFloat()
-            )
-        }
-    }
-
-    val animationTime by rememberInfiniteTransition(label = "particles")
-        .animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(120000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "particleTime"
-        )
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        particles.forEach { particle ->
-            val y = ((particle.initialY - animationTime * particle.speed) % 1f) * size.height
-            val x = size.width * particle.x + sin(y * 0.01f + particle.phase) * 30f
-            val adjustedX = x - dragOffset.x * 0.2f
-
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        theme.ink.copy(alpha = particle.opacity),
-                        Color.Transparent
-                    )
-                ),
-                radius = particle.size,
-                center = Offset(adjustedX, y)
-            )
-        }
-    }
-}
-
-data class ParticleData(
-    val x: Float,
-    val initialY: Float,
-    val speed: Float,
-    val size: Float,
-    val opacity: Float,
-    val phase: Float
-)
-
-@Composable
-private fun BoxScope.WeatherInfoCards(
-    state: SunTimeUiState,
-    theme: ColorTheme,
-    dragOffset: Offset
-) {
-    Row(
-        modifier = Modifier
-            .align(Alignment.BottomStart)
-            .padding(start = 24.dp, bottom = 80.dp)
-            .offset(x = (dragOffset.x * 0.01f).dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // UV Index Card
-        InfoCard(
-            title = "UV INDEX",
-            value = "6",
-            subtitle = "Moderate",
-            theme = theme,
-            delay = 0
-        )
-
-        // Humidity Card
-        InfoCard(
-            title = "HUMIDITY",
-            value = "65%",
-            subtitle = "Normal",
-            theme = theme,
-            delay = 100
-        )
-    }
-
-    Row(
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = 24.dp, bottom = 80.dp)
-            .offset(x = -(dragOffset.x * 0.01f).dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Wind Card
-        InfoCard(
-            title = "WIND",
-            value = "12",
-            subtitle = "km/h",
-            theme = theme,
-            delay = 200
-        )
-
-        // Visibility Card
-        InfoCard(
-            title = "VISIBILITY",
-            value = "10",
-            subtitle = "km",
-            theme = theme,
-            delay = 300
-        )
-    }
-}
-
-@Composable
-private fun InfoCard(
-    title: String,
-    value: String,
-    subtitle: String,
-    theme: ColorTheme,
-    delay: Int
-) {
-    var visible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(delay.toLong())
-        visible = true
-    }
-
-    androidx.compose.animation.AnimatedVisibility(
-        visible = visible,
-        enter = androidx.compose.animation.fadeIn(tween(600)) +
-                androidx.compose.animation.scaleIn(
-                    initialScale = 0.8f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    )
-                )
-    ) {
-        Card(
-            modifier = Modifier
-                .width(90.dp)
-                .height(100.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = theme.ink.copy(alpha = 0.03f)
-            ),
-            elevation = CardDefaults.cardElevation(0.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 9.sp,
-                    letterSpacing = 1.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = theme.ink.copy(alpha = 0.5f)
-                )
-
-                Column {
-                    Text(
-                        text = value,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Light,
-                        color = theme.ink
-                    )
-                    Text(
-                        text = subtitle,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = theme.ink.copy(alpha = 0.6f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BoxScope.EnhancedFooter(state: SunTimeUiState, theme: ColorTheme) {
-    val scale by rememberInfiniteTransition(label = "footer")
-        .animateFloat(
-            initialValue = 1f,
-            targetValue = 1.05f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "footerScale"
-        )
-
-    Column(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 32.dp)
-            .scale(scale),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Location pin icon (you'd use actual icon)
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(theme.ink.copy(alpha = 0.3f))
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = state.city,
-            fontSize = 13.sp,
-            letterSpacing = 5.sp,
-            fontWeight = FontWeight.Medium,
-            color = theme.ink,
-            style = androidx.compose.ui.text.TextStyle(
-                shadow = Shadow(
-                    color = theme.ink.copy(alpha = 0.1f),
-                    offset = Offset(0f, 2f),
-                    blurRadius = 4f
-                )
-            )
-        )
-    }
-}
-
-@Composable
-private fun DynamicPaperGrain(theme: ColorTheme, dragOffset: Offset) {
-    val points = remember {
-        buildList {
-            val random = Random(42)
-            repeat(12_000) {
-                add(
-                    Triple(
-                        random.nextFloat(),
-                        random.nextFloat(),
-                        random.nextFloat() * 0.025f
-                    )
-                )
-            }
-        }
-    }
-
-    val noiseOffset by rememberInfiniteTransition(label = "grain")
-        .animateFloat(
-            initialValue = 0f,
-            targetValue = 100f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(8000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "grainOffset"
-        )
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val grainColor = if (theme.paperBg.luminance() > 0.5f) Color.Black else Color.White
-        for ((xN, yN, alpha) in points) {
-            val dynamicAlpha = alpha * (0.8f + 0.2f * sin(noiseOffset * 0.1f + xN * 10f))
-            val x = xN * size.width + dragOffset.x * 0.01f
-            val y = yN * size.height + dragOffset.y * 0.01f
-
-            drawRect(
-                grainColor.copy(alpha = dynamicAlpha),
-                topLeft = Offset(x, y),
-                size = Size(1f, 1f)
-            )
-        }
-    }
-}
-@Composable
-private fun TouchRipples(rippleAnimations: List<RippleEffect>, theme: ColorTheme) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        rippleAnimations.forEach { ripple ->
-            val age = System.currentTimeMillis() - ripple.startTime
-            val progress = age / 2000f
-            if (progress < 1f) {
-                val radius = progress * 200f
-                val alpha = (1f - progress) * 0.3f
-
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            theme.celestialColor.copy(alpha = alpha),
-                            Color.Transparent
-                        ),
-                        center = ripple.position,
-                        radius = radius
-                    ),
-                    radius = radius,
-                    center = ripple.position
-                )
-
-                drawCircle(
-                    color = theme.brightColor.copy(alpha = alpha * 0.5f),
-                    radius = radius,
-                    center = ripple.position,
-                    style = Stroke(width = 2f)
-                )
-            }
         }
     }
 }

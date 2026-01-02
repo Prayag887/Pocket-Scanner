@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import kotlin.math.PI
+import kotlin.math.sin
 
 data class AnimationValues(
     val phase1: Float,
@@ -41,15 +42,16 @@ fun rememberWeatherAnimations(): AnimationValues {
         label = "phase2"
     )
 
-    val shimmer by infiniteTransition.animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
+    // Convert to continuous sine wave instead of reversing
+    val shimmerPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
         animationSpec = infiniteRepeatable(
-            tween(2500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            tween(2500, easing = LinearEasing)
         ),
-        label = "shimmer"
+        label = "shimmer-phase"
     )
+    val shimmer = sin(shimmerPhase)
 
     val ripplePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -60,15 +62,16 @@ fun rememberWeatherAnimations(): AnimationValues {
         label = "ripple-phase"
     )
 
-    val verticalWave by infiniteTransition.animateFloat(
-        initialValue = -0.4f,
-        targetValue = 0.4f,
+    // Convert to continuous sine wave instead of reversing
+    val verticalWavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(2200, easing = LinearEasing)
         ),
-        label = "vertical-wave"
+        label = "vertical-wave-phase"
     )
+    val verticalWave = sin(verticalWavePhase) * 0.4f
 
     return AnimationValues(phase1, phase2, shimmer, ripplePhase, verticalWave)
 }

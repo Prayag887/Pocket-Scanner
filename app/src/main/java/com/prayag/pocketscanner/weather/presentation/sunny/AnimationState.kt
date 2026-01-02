@@ -43,3 +43,22 @@ data class SparkleCache(
     val baseXOffset: Float,
     val waveCoefficient: Float
 )
+
+data class ParticleData(
+    val x: Float,
+    val initialY: Float,
+    val speed: Float,
+    val size: Float,
+    val opacity: Float,
+    val phase: Float
+)
+
+
+data class CloudData(
+    val initialX: Float,
+    val y: Float,
+    val speed: Float,
+    val scale: Float,
+    val opacity: Float,
+    val radii: List<Float>
+)
