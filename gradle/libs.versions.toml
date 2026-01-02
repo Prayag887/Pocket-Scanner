@@ -22,6 +22,7 @@ documentScanner = "16.0.0-beta1"
 material = "1.12.0"
 materialIconsExtended = "1.7.8"
 navigationCompose = "2.9.0"
+volley = "1.2.1"
 
 
 [libraries]
@@ -62,6 +63,7 @@ material = { module = "com.google.android.material:material", version.ref = "mat
 #firebase login
 firebase-auth = { module = "com.google.firebase:firebase-auth", version.ref = "firebaseAuth" }
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
+volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
 
 
 [plugins]
