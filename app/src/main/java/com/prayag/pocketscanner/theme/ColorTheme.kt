@@ -80,6 +80,6 @@ object ThemeProvider {
     fun getTheme(): ColorTheme {
         val calendar = Calendar.getInstance()
         val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        return if (hour in 6..17) dayTheme else nightTheme
+        return if (hour in 6..17) nightTheme else nightTheme
     }
 }
