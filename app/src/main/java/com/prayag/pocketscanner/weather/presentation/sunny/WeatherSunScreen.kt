@@ -1,7 +1,6 @@
 package com.prayag.pocketscanner.weather.presentation.sunny
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -28,9 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -54,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -72,10 +71,12 @@ import com.prayag.pocketscanner.theme.ColorTheme
 import com.prayag.pocketscanner.theme.ThemeProvider
 import kotlinx.coroutines.delay
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 import kotlin.random.Random
 
 @Composable
@@ -93,7 +94,17 @@ fun WeatherSunScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(theme.paperBg)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        theme.sky,
+                        theme.nearHorizon,
+                        theme.paperBg      // Ocean color
+                    ),
+                    startY = 0f,
+                    endY = Float.POSITIVE_INFINITY
+                )
+            )
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -104,6 +115,7 @@ fun WeatherSunScreen(
                     onTap = {}
                 )
             }
+            .padding(vertical = 50.dp)
 
     ) {
         // Ambient background layers
@@ -132,7 +144,7 @@ fun WeatherSunScreen(
         WeatherInfoCards(state, theme)
 
         // Enhanced footer with animation
-        EnhancedFooter(state, theme)
+//        EnhancedFooter(state, theme)
 
         // Dynamic paper grain
         DynamicPaperGrain(theme)
@@ -180,108 +192,69 @@ private fun AnimatedBackgroundLayers(theme: ColorTheme) {
     }
 }
 
+
+
 @Composable
 private fun FloatingClouds(theme: ColorTheme) {
-    val clouds = remember {
-        List(5) { i ->
-            CloudData(
-                initialX = Random.nextFloat(),
-                y = 0.15f + i * 0.15f,
-                speed = 6f + Random.nextFloat() * 4f,
-                scale = 0.6f + Random.nextFloat() * 0.8f,
-                opacity = 0.02f + Random.nextFloat() * 0.04f,
-                radii = List(8) { 0.8f + Random.nextFloat() * 0.4f }
-            )
-        }
-    }
-
-    val animationTime by rememberInfiniteTransition(label = "clouds")
-        .animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(100_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "cloudTime"
-        )
+    val transition = rememberInfiniteTransition(label = "")
+    val offset by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(100000, easing = LinearEasing)))
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        clouds.forEach { cloud ->
-            val x =
-                ((cloud.initialX + animationTime * cloud.speed) % 1f) * size.width
-
-            val y =
-                size.height * cloud.y
-
+        repeat(4) { i ->
+            val x = ((offset + i * 0.35f) % 1f) * size.width
+            val y = size.height * (0.12f + i * 0.07f)
             drawCloudShape(
                 center = Offset(x, y),
-                size = cloud.scale * size.width * 0.15f,
-                fillColor = theme.cloudColor.copy(alpha = cloud.opacity),
-                strokeColor = theme.paperBg.copy(alpha = cloud.opacity),
-                strokeWidth = 1f
+                size = 140.dp.toPx(),
+                fillColor = Color.White.copy(0.18f),
+                strokeColor = Color.Transparent
             )
         }
     }
 }
 
-fun DrawScope.drawCloudShape(
+/**
+ * MISSING FUNCTION FIXED: Helper to draw organic cloud shapes
+ */
+private fun DrawScope.drawCloudShape(
     center: Offset,
     size: Float,
     fillColor: Color,
     strokeColor: Color,
-    strokeWidth: Float = size * 0.08f
+    strokeWidth: Float = 0f
 ) {
     val w = size
-    val h = size * 0.6f
+    val h = size * 0.5f
 
     val path = Path().apply {
-        // Start bottom-left
-        moveTo(center.x - w * 0.45f, center.y + h * 0.15f)
-
-        // Bottom base
-        lineTo(center.x + w * 0.45f, center.y + h * 0.15f)
-
-        // Right lobe
+        moveTo(center.x - w * 0.4f, center.y + h * 0.2f)
+        // Bottom Base
+        lineTo(center.x + w * 0.4f, center.y + h * 0.2f)
+        // Right Lobe
         cubicTo(
-            center.x + w * 0.55f, center.y,
-            center.x + w * 0.35f, center.y - h * 0.35f,
-            center.x + w * 0.15f, center.y - h * 0.25f
+            center.x + w * 0.6f, center.y + h * 0.2f,
+            center.x + w * 0.6f, center.y - h * 0.3f,
+            center.x + w * 0.3f, center.y - h * 0.3f
         )
-
-        // Top-right lobe
+        // Top Lobe
         cubicTo(
-            center.x + w * 0.05f, center.y - h * 0.55f,
-            center.x - w * 0.05f, center.y - h * 0.55f,
-            center.x - w * 0.15f, center.y - h * 0.25f
+            center.x + w * 0.2f, center.y - h * 0.8f,
+            center.x - w * 0.2f, center.y - h * 0.8f,
+            center.x - w * 0.3f, center.y - h * 0.3f
         )
-
-        // Left lobe
+        // Left Lobe
         cubicTo(
-            center.x - w * 0.35f, center.y - h * 0.35f,
-            center.x - w * 0.55f, center.y,
-            center.x - w * 0.45f, center.y + h * 0.15f
+            center.x - w * 0.6f, center.y - h * 0.3f,
+            center.x - w * 0.6f, center.y + h * 0.2f,
+            center.x - w * 0.4f, center.y + h * 0.2f
         )
-
         close()
     }
 
-    // Fill
-    drawPath(
-        path = path,
-        color = fillColor
-    )
-
-    // Outline
-    drawPath(
-        path = path,
-        color = strokeColor,
-        style = Stroke(
-            width = strokeWidth,
-            cap = StrokeCap.Round,
-            join = StrokeJoin.Round
-        )
-    )
+    drawPath(path = path, color = fillColor)
+    if (strokeWidth > 0) {
+        drawPath(path = path, color = strokeColor, style = Stroke(width = strokeWidth))
+    }
 }
 
 
@@ -305,30 +278,54 @@ private fun BoxScope.EnhancedHeader(
             .scale(scale)
             .padding(start = 28.dp, top = 24.dp)
     ) {
+
+        // TEMPERATURE — optical depth, zero gimmicks
         Text(
             text = "${state.temperature}°",
-            fontSize = 72.sp,
-            fontWeight = FontWeight.ExtraLight,
+            fontSize = 74.sp,
+            fontWeight = FontWeight.Thin,
+            letterSpacing = (-1).sp,
             color = theme.ink,
             style = TextStyle(
                 shadow = Shadow(
-                    color = theme.ink.copy(alpha = 0.1f),
-                    offset = Offset(0f, 4f),
-                    blurRadius = 8f
+                    color = theme.ink.copy(alpha = 0.18f),
+                    offset = Offset(0f, 6f),
+                    blurRadius = 18f
                 )
             )
         )
 
+        // Micro separator via negative spacing
+        Spacer(Modifier.height((-6).dp))
+
+        // CITY — confident, restrained
+        Text(
+            text = state.city.uppercase(),
+            fontSize = 12.sp,
+            letterSpacing = 2.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = theme.ink.copy(alpha = 0.85f),
+            style = TextStyle(
+                shadow = Shadow(
+                    color = theme.ink.copy(alpha = 0.08f),
+                    offset = Offset(0f, 1.5f),
+                    blurRadius = 4f
+                )
+            )
+        )
+
+        Spacer(Modifier.height(2.dp))
+
+        // FEELS LIKE — metadata, barely there
         Text(
             text = "Feels like ${state.temperature - 2}°",
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Light,
-            color = theme.ink.copy(alpha = 0.6f),
-            modifier = Modifier.padding(start = 4.dp)
+            letterSpacing = 0.2.sp,
+            color = theme.ink.copy(alpha = 0.55f)
         )
     }
 
-    // Condition badges (time-based only)
     Column(
         modifier = Modifier
             .align(Alignment.TopEnd)
@@ -561,100 +558,33 @@ private fun Content(
     }
 }
 
-
-
-@Composable
-private fun BoxScope.EnhancedFooter(state: SunTimeUiState, theme: ColorTheme) {
-    val scale by rememberInfiniteTransition(label = "footer")
-        .animateFloat(
-            initialValue = 1f,
-            targetValue = 1.05f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(2000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "footerScale"
-        )
-
-    Column(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 32.dp)
-            .scale(scale),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Location pin icon (you'd use actual icon)
-//        Box(
-//            modifier = Modifier
-//                .size(6.dp)
-//                .clip(CircleShape)
-//                .background(theme.ink.copy(alpha = 0.3f))
-//        )
-//
-//        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = state.city,
-            fontSize = 13.sp,
-            letterSpacing = 5.sp,
-            fontWeight = FontWeight.Medium,
-            color = theme.ink,
-            style = TextStyle(
-                shadow = Shadow(
-                    color = theme.ink.copy(alpha = 0.1f),
-                    offset = Offset(0f, 2f),
-                    blurRadius = 4f
-                )
-            )
-        )
-    }
-}
-
 @Composable
 private fun DynamicPaperGrain(theme: ColorTheme) {
     val points = remember {
-        buildList {
-            val random = Random(42)
-            repeat(12_000) {
-                add(
-                    Triple(
-                        random.nextFloat(),
-                        random.nextFloat(),
-                        random.nextFloat() * 0.025f
-                    )
-                )
-            }
-        }
+        val random = Random(42)
+        // Pre-convert to Offset objects to save allocation in the draw loop
+        List(12_000) { Offset(random.nextFloat(), random.nextFloat()) }
     }
 
-    val noiseOffset by rememberInfiniteTransition(label = "grain")
-        .animateFloat(
-            initialValue = 0f,
-            targetValue = 100f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(8000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "grainOffset"
-        )
+    val infiniteTransition = rememberInfiniteTransition()
+    val globalAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.01f,
+        targetValue = 0.02f,
+        animationSpec = infiniteRepeatable(tween(2000), RepeatMode.Reverse)
+    )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val grainColor =
-            if (theme.paperBg.luminance() > 0.5f) Color.Black else Color.White
+        val grainColor = if (theme.paperBg.luminance() > 0.5f) Color.Black else Color.White
 
-        for ((xN, yN, alpha) in points) {
-            val dynamicAlpha =
-                alpha * (0.8f + 0.2f * sin(noiseOffset * 0.1f + xN * 10f))
+        // Scale offsets to current canvas size
+        val scaledPoints = points.map { Offset(it.x * size.width, it.y * size.height) }
 
-            drawRect(
-                color = grainColor.copy(alpha = dynamicAlpha),
-                topLeft = Offset(
-                    x = xN * size.width,
-                    y = yN * size.height
-                ),
-                size = Size(1f, 1f)
-            )
-        }
+        drawPoints(
+            points = scaledPoints,
+            pointMode = PointMode.Points,
+            color = grainColor.copy(alpha = globalAlpha),
+            strokeWidth = 1f // 1 pixel
+        )
     }
 }
 
@@ -785,7 +715,7 @@ private fun BoxScope.EnhancedSunRiverScene(
             }
         }
 
-        // [Keep existing water ripples, glow layers, and reflection strokes code here]
+        // [water ripples, glow layers, and reflection strokes code here]
         cache.reflectionStrokes.forEach { stroke ->
             val wavePhase1 = (phase1 + stroke.timeOffset1) % twoPi
             val wavePhase2 = (phase2 + stroke.timeOffset2) % twoPi
